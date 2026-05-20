@@ -1,0 +1,17 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE 配置
+.idea/
+.vscode/
+
+# Excel 数据文件（绝对不上传）
+data/*.xlsx
+data/*.xls
+*.xlsx
+*.xls
+
+# 系统文件
+.DS_Store
