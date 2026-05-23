@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-快递订单对账匹配模块（V1.4）
+快递订单对账匹配模块（V1.6）
 ==================================================
 【框架说明】
-  功能：运单号匹配 → 标注是否匹配 → 回填团队名称 → 导出结果
-  依赖：先运行 merge_express.py 生成清洗合并总账单
-        先运行 order_db.py 生成毅播快递数据_YYYYMM.xlsx
+  功能：运单号匹配 → 标注是否匹配 → 回填团队名称
+        按Excel公式自动生成【实际计算方式】列
+        Excel公式：
+        =IFS(F2>=3,"单票",AND(LEFT(D2,2)="新疆",F2<3,F2>1),"新西1-3公斤",AND(LEFT(D2,2)="西藏",F2<3,F2>1),"新西1-3公斤",TRUE,"全国均重")
+        字段对应：
+        Excel F2 = 结算重量(E列)
+        Excel D2 = 目的省份(D列)
+        规则：
+        1. 结算重量≥3kg → 单票
+        2. 新疆/西藏 且 1<重量<3kg → 新西1-3公斤
+        3. 其余全部 → 全国均重
   输出：output/最终对账结果.xlsx
   可独立运行
 ==================================================
@@ -29,6 +37,24 @@ def ensure_folder(folder_path):
     """确保输出文件夹存在"""
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
+
+
+# ====================== 计算方式判断函数 ======================
+def get_calc_type(dest_prov, weight):
+    """
+    完全复刻Excel公式：
+    =IFS(F2>=3,"单票",
+         AND(LEFT(D2,2)="新疆",F2<3,F2>1),"新西1-3公斤",
+         AND(LEFT(D2,2)="西藏",F2<3,F2>1),"新西1-3公斤",
+         TRUE,"全国均重")
+    对应：F2=结算重量(E列)  D2=目的省份(D列)
+    """
+    if weight >= 3:
+        return "单票"
+    prov_prefix = str(dest_prov)[:2]
+    if (prov_prefix in ["新疆", "西藏"]) and (1 < weight < 3):
+        return "新西1-3公斤"
+    return "全国均重"
 
 
 def load_source_data():
@@ -59,17 +85,27 @@ def match_team_by_waybill():
     if df_express is None or df_order is None:
         return None
 
-    # 关键修复：处理快递账单的运单号，去除小数后缀
+    # 关键修复：处理运单号去除小数后缀
     df_express["运单号"] = df_express["运单号"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
     df_order["运单号"] = df_order["运单号"].astype(str).str.strip()
 
-    # 构建映射关系
+    # 构建运单号-团队映射
     waybill_team_map = df_order[["运单号", "所属团队"]].drop_duplicates("运单号").set_index("运单号")[
         "所属团队"].to_dict()
 
-    # 回填团队名称
+    # 回填所属团队
     df_express["所属团队"] = df_express["运单号"].map(waybill_team_map)
     df_express["所属团队"] = df_express["所属团队"].fillna("未匹配")
+
+    # 新增两列空字段
+    df_express["实际计算方式"] = ""
+    df_express["单票应付金额"] = ""
+
+    # 批量自动填充实际计算方式
+    df_express["实际计算方式"] = df_express.apply(
+        lambda row: get_calc_type(row["目的省份"], row["结算重量"]),
+        axis=1
+    )
 
     matched_count = len(df_express[df_express["所属团队"] != "未匹配"])
     print(f"✅ 匹配完成：共 {len(df_express)} 条，成功匹配 {matched_count} 条，未匹配 {len(df_express) - matched_count} 条")
@@ -93,32 +129,29 @@ def export_styled_result(df_result):
     header_font = Font(bold=True)
     center_align = Alignment(horizontal="center", vertical="center")
 
-    # 1. 全表添加边框（高效写法）
-    last_col = chr(ord('A') + max_col - 1)
-    for row in ws[f"A1:{last_col}{max_row}"]:
+    # 1. 计算最后一列的字母
+    last_col_letter = chr(ord('A') + max_col - 1)
+
+    # 2. 全表添加边框（正确写法）
+    for row in ws[f"A1:{last_col_letter}{max_row}"]:
         for cell in row:
             cell.border = border
 
-    # 2. 表头样式
+    # 3. 表头样式
     for cell in ws[1]:
         cell.font = header_font
         cell.alignment = center_align
 
-    # 3. 【全固定列宽】按你表格字段设置的合理宽度
-    # A列：业务时间
+    # 4. 全固定列宽
     ws.column_dimensions['A'].width = 20
-    # B列：运单号
     ws.column_dimensions['B'].width = 18
-    # C列：目的省份
     ws.column_dimensions['C'].width = 12
-    # D列：目的城市
     ws.column_dimensions['D'].width = 12
-    # E列：结算重量
     ws.column_dimensions['E'].width = 10
-    # F列：快递类型
     ws.column_dimensions['F'].width = 12
-    # G列：所属团队
     ws.column_dimensions['G'].width = 16
+    ws.column_dimensions['H'].width = 28
+    ws.column_dimensions['I'].width = 13
 
     wb.save(RESULT_FILE)
     print(f"✅ 最终对账结果已保存：{RESULT_FILE}")
@@ -127,7 +160,7 @@ def export_styled_result(df_result):
 # ====================== 主流程 ======================
 def run_reconciliation():
     print("=" * 60)
-    print("📌 启动快递订单对账匹配程序（V1.4）")
+    print("📌 启动快递订单对账匹配程序（V1.6）")
     print("=" * 60)
 
     matched_data = match_team_by_waybill()
