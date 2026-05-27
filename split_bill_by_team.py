@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-客户对账账单拆分 V1.8 最终版
-核心功能：
-1. 按团队拆分账单，自动生成标准化Excel
+客户对账账单拆分 V2.0 稳定版
+==================================================
+【核心功能】
+1. 按团队拆分账单，自动生成标准化Excel格式
 2. 运费核算：全国均重/单票/新西1-3kg/新西1kg内加收费用计算
 3. 专项统计：新西1kg订单数、1%占比判断、应结算单数核算
 4. 文件命名：{合计金额}-{团队名}_{业务年月}_快递加收费.xlsx
 5. 0费用过滤：普通团队合计金额为0不生成文件
-特殊规则（仅千耀传媒生效）：
-- 新增「快递类型」列，全国均重拆分申通/中通独立计算
-- 双条件筛选：发货单量/重量/均值按「实际计算方式+快递类型」独立取数
-- 超出重量按「团队+快递类型」匹配配置拉均值，自动处理负数
-- 专项统计表下移+完整边框，金额为0强制输出
+【V2.0版本更新】
+1. 表格样式优化：加收费汇总标题横跨L→S全列，排版更规整
+2. 千耀传媒专项优化：
+   - 快递类型列仅「全国均重」行显示申通/中通，其余行自动清空
+   - 双条件筛选：发货单量/重量/均值按「实际计算方式+快递类型」独立取数
+   - 超出重量按「团队+快递类型」匹配配置，负数自动置0，费用精准计算
+3. 专项统计表下移适配+完整闭合边框，避免与汇总表重叠
+4. 千耀传媒金额为0强制输出，其他团队保持原过滤规则
+==================================================
 """
 import os
 import math
@@ -100,13 +105,13 @@ def set_worksheet_style(ws, max_row: int, max_col: int):
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
 
-# ===================== 核心汇总统计（仅千耀传媒分支优化，原逻辑不变） =====================
+# ===================== 核心汇总统计（仅修改标题合并范围，其他逻辑不变） =====================
 def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     st_avg_all, zt_avg_all, st_fee_all, zt_fee_all = get_team_rule(team_name)
     print(f"\n【调试】当前团队:{team_name} 申通:{st_avg_all}/{st_fee_all} 中通:{zt_avg_all}/{zt_fee_all}")
 
     col_start = 12
-    col_end = 18
+    col_end = 19  # 【关键修改】原18(R列)改为19(S列)，实现标题横跨L→S全列
 
     # 基础统计（无修改）
     total_order = len(team_df)
@@ -116,7 +121,7 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     settle_order = math.ceil(xixi_order - threshold) if is_over_flag == "是" else 0
     r11_value = settle_order * 10
 
-    # 汇总大标题（无修改）
+    # 汇总大标题（已适配新的合并范围，横跨L→S）
     ws.merge_cells(start_row=1, start_column=col_start, end_row=1, end_column=col_end)
     title_cell = ws.cell(row=1, column=col_start)
     title_cell.value = "加收费汇总"
@@ -157,7 +162,7 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     summary_rows = []
     total_fee_all = 0.0
 
-    # ========== 【千耀传媒】核心优化：双条件取数+超出重量计算 ==========
+    # ========== 【千耀传媒】核心逻辑（无修改：双条件筛选+快递类型仅全国均重显示） ==========
     if team_name == SPECIAL_TEAM:
         for idx, (calc_name, express_type) in enumerate(calc_list):
             seq = idx + 1
@@ -186,10 +191,10 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 use_avg = st_avg_all
                 use_fee = st_fee_all
 
-            # 3. 超出重量计算（max避免负数，无超出则为0）
+            # 3. 超出重量计算（负数自动置0）
             if calc_name == "全国均重":
                 exceed_weight = round(avg_weight - use_avg,2)
-                exceed_weight = max(exceed_weight, 0.0)  # 关键：负数自动取0
+                exceed_weight = max(exceed_weight, 0.0)
                 single_fee = round((exceed_weight / 0.1) * use_fee,2)
                 row_fee = round(single_fee * order_cnt,2)
                 total_fee_all += row_fee
@@ -199,7 +204,7 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 for _,row in filter_df.iterrows():
                     w = float(row["结算重量"]) if pd.notna(row["结算重量"]) else 0.0
                     diff = w - use_avg
-                    diff = max(diff, 0.0)  # 关键：负数自动取0
+                    diff = max(diff, 0.0)
                     fee_sum += round((diff / 0.1) * use_fee,2)
                 row_fee = round(fee_sum,2)
                 total_fee_all += row_fee
@@ -208,13 +213,16 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 row_fee = r11_value
                 total_fee_all += row_fee
 
-            # 组装行数据（无修改）
+            # 4. 快递类型列仅全国均重行显示，其余行清空
+            display_express_type = express_type if calc_name == "全国均重" else ""
+
+            # 组装行数据
             if calc_name == "新西1kg内（包1%）":
-                row_data = [seq, calc_name, express_type, "", "", "", "", row_fee]
+                row_data = [seq, calc_name, display_express_type, "", "", "", "", row_fee]
             elif calc_name == "合计":
-                row_data = [seq, calc_name, "", total_order, "", "", "", "=SUM(S3:S7)"]
+                row_data = [seq, calc_name, "", "", "", "", "", "=SUM(S3:S7)"]
             else:
-                row_data = [seq, calc_name, express_type, order_cnt, total_weight, avg_weight, exceed_weight, row_fee]
+                row_data = [seq, calc_name, display_express_type, order_cnt, total_weight, avg_weight, exceed_weight, row_fee]
 
             if calc_name in ("单票","新西1-3公斤","新西1kg内（包1%）","合计"):
                 row_data[3] = row_data[4] = row_data[5] = ""
@@ -347,7 +355,7 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     print("✅ 汇总表、专项统计表写入完成")
     return total_fee_all
 
-# ===================== 数据读取与文件拆分（仅修复路径错误） =====================
+# ===================== 数据读取与文件拆分（无修改） =====================
 def load_source_data() -> pd.DataFrame:
     if not os.path.exists(SOURCE_FILE):
         raise FileNotFoundError(f"原始数据文件不存在 {SOURCE_FILE}")
@@ -380,7 +388,7 @@ def split_by_group(df: pd.DataFrame):
         wb.save(temp_path)
         wb.close()
 
-        # 提取业务年月（无修改）
+        # 提取业务年月
         try:
             team_data["业务时间"] = pd.to_datetime(team_data["业务时间"])
             if len(team_data) >= 2:
@@ -392,14 +400,14 @@ def split_by_group(df: pd.DataFrame):
             print(f"【警告】{team_name} 业务年月异常：{str(e)}，使用默认值0000-00")
             year_month = "0000-00"
 
-        # 千耀传媒金额0不跳过（无修改）
+        # 千耀传媒金额0不跳过
         if abs(total_fee) < 1e-6 and team_name != SPECIAL_TEAM:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             print(f"【跳过】{team_name}：合计应付为0，不生成文件")
             continue
 
-        # 修复：正确拼接输出路径
+        # 生成最终文件
         fee_str = f"{total_fee:.2f}"
         new_file_name = f"{fee_str}-{safe_team_name}_{year_month}_快递加收费.xlsx"
         new_path = os.path.join(SAVE_DIR, new_file_name)
@@ -409,10 +417,10 @@ def split_by_group(df: pd.DataFrame):
 
         print(f"✅ 生成完成：{new_file_name} | 单据数：{len(team_data)} | 合计金额：{total_fee}")
 
-# ===================== 程序入口（无修改） =====================
+# ===================== 程序入口（更新版本号为V2.0） =====================
 def main():
     print("=" * 65)
-    print("        客户对账账单拆分程序 V1.8 最终版")
+    print("        客户对账账单拆分程序 V2.0 稳定版")
     print("=" * 65)
     try:
         init_folder()
@@ -426,4 +434,5 @@ def main():
         print(f"\n❌ 运行异常：{str(e)}")
 
 if __name__ == "__main__":
+    print("🚀 启动快递账单拆分程序（V2.0）")
     main()
