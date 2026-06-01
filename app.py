@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-毅播快递对账系统 - Web服务主程序 V2.5
+毅播快递对账系统 - Web服务主程序 V2.6
 ==================================================
 【说明】
   Flask轻量Web服务，提供局域网浏览器操作界面
@@ -12,7 +12,10 @@
 【V2.5 新增】
   运行日志自动保存到 output/YYYY-MM/run.log
   追加模式：多次运行不覆盖，每次运行用分隔线区分
-  记录内容：运行时间、处理月份、完整日志、结果、耗时
+
+【V2.6 新增】
+  历史记录查看：页面底部显示所有月份处理记录
+  每个月份独立下载按钮，直接下载对应月份zip
 ==================================================
 """
 import os
@@ -48,10 +51,7 @@ def get_process_month():
 
 
 def push_log(msg):
-    """
-    推送日志到浏览器队列
-    只往队列写，不调用print，避免和LogCapture死循环
-    """
+    """推送日志到浏览器队列，不调用print避免死循环"""
     log_queue.put(msg)
 
 
@@ -62,7 +62,7 @@ def get_log_path(output_folder):
 
 
 def get_run_count(log_path):
-    """统计 run.log 里已有几次运行记录，用于标注第N次运行"""
+    """统计 run.log 里已有几次运行记录"""
     if not os.path.exists(log_path):
         return 1
     try:
@@ -111,11 +111,11 @@ class LogCapture(io.StringIO):
 
     def write(self, msg):
         if msg.strip():
-            log_queue.put(msg.strip())           # 推送到浏览器
-            self._real_stdout.write(msg + "\n")  # 打印到服务器控制台
-            if self._log_file:                   # 写入日志文件
+            log_queue.put(msg.strip())
+            self._real_stdout.write(msg + "\n")
+            if self._log_file:
                 self._log_file.write(msg.strip() + "\n")
-                self._log_file.flush()           # 实时刷新防崩溃丢日志
+                self._log_file.flush()
         return len(msg)
 
     def flush(self):
@@ -135,7 +135,6 @@ def run_task(data_folder, output_folder, process_month):
 
     os.makedirs(output_folder, exist_ok=True)
 
-    # 打开日志文件（追加模式，多次运行不覆盖）
     log_path  = get_log_path(output_folder)
     run_count = get_run_count(log_path)
     log_file  = open(log_path, "a", encoding="utf-8")
@@ -209,10 +208,7 @@ def index():
 # ====================== 路由：上传账单文件 ======================
 @app.route("/upload", methods=["POST"])
 def upload():
-    """
-    接收上传文件存入 data/YYYY-MM/
-    文件保留原始文件名，merge_express.py 自动扫描识别申通/中通
-    """
+    """接收上传文件存入 data/YYYY-MM/"""
     if "file" not in request.files:
         return jsonify({"ok": False, "msg": "没有收到文件"}), 400
 
@@ -244,7 +240,6 @@ def run():
             }), 429
         is_running = True
 
-    # 清空日志队列
     while not log_queue.empty():
         try:
             log_queue.get_nowait()
@@ -255,7 +250,6 @@ def run():
     data_folder   = os.path.join("data",   process_month)
     output_folder = os.path.join("output", process_month)
 
-    # 检查是否有账单文件
     xlsx_files = [
         f for f in os.listdir(data_folder)
         if f.endswith(".xlsx") and not f.startswith("~")
@@ -312,17 +306,29 @@ def status():
     })
 
 
-# ====================== 路由：下载结果zip ======================
+# ====================== 路由：下载当月结果zip ======================
 @app.route("/download")
 def download():
-    """把 output/YYYY-MM/ 打包成 zip 提供浏览器下载，本地文件永久保留"""
+    """下载当月结果zip"""
     process_month = get_process_month()
-    output_folder = os.path.join("output", process_month)
+    return download_month(process_month)
+
+
+# ====================== 路由：下载指定月份zip ======================
+@app.route("/download/<month>")
+def download_month_route(month):
+    """下载指定月份结果zip，供历史记录页面使用"""
+    return download_month(month)
+
+
+def download_month(month):
+    """打包指定月份 output/YYYY-MM/ 为zip提供下载"""
+    output_folder = os.path.join("output", month)
 
     if not os.path.exists(output_folder):
-        return "结果文件不存在，请先运行任务", 404
+        return "结果文件不存在", 404
 
-    zip_path = os.path.join("output", f"{process_month}_结果.zip")
+    zip_path = os.path.join("output", f"{month}_结果.zip")
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(output_folder):
@@ -334,8 +340,73 @@ def download():
     return send_file(
         os.path.abspath(zip_path),
         as_attachment=True,
-        download_name=f"{process_month}_对账结果.zip"
+        download_name=f"{month}_对账结果.zip"
     )
+
+
+# ====================== 路由：历史记录 ======================
+@app.route("/history")
+def history():
+    """
+    扫描 output/ 目录，返回所有月份的处理记录
+    读取每个月的 run.log 最后一次运行结果
+    按月份倒序排列
+    """
+    output_base = "output"
+    records     = []
+
+    if not os.path.exists(output_base):
+        return jsonify([])
+
+    for folder in sorted(os.listdir(output_base), reverse=True):
+        folder_path = os.path.join(output_base, folder)
+        if not os.path.isdir(folder_path):
+            continue
+        if len(folder) != 7 or folder[4] != "-":
+            continue
+
+        log_path = os.path.join(folder_path, "run.log")
+        record   = {
+            "month":         folder,
+            "has_log":       os.path.exists(log_path),
+            "run_count":     0,
+            "last_result":   "无记录",
+            "last_time":     "",
+            "last_duration": ""
+        }
+
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    content_log = f.read()
+
+                record["run_count"] = content_log.count("【第")
+
+                sections = content_log.split("【第")
+                if len(sections) > 1:
+                    last_section = sections[-1]
+
+                    for line in last_section.split("\n"):
+                        if "】" in line:
+                            record["last_time"] = line.split("】")[-1].strip()
+                            break
+
+                    if "成功 ✅" in last_section:
+                        record["last_result"] = "成功"
+                    elif "失败 ❌" in last_section:
+                        record["last_result"] = "失败"
+
+                    for line in last_section.split("\n"):
+                        if line.startswith("耗时："):
+                            record["last_duration"] = line.replace("耗时：", "").strip()
+                            break
+
+            except Exception:
+                record["last_result"] = "日志读取失败"
+
+        records.append(record)
+
+    return jsonify(records)
 
 
 # ====================== 启动 ======================

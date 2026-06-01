@@ -299,7 +299,7 @@
     <div class="upload-item">
       <div class="upload-label">
         <span class="dot" id="dot-st"></span>
-        申通账单
+        <span id="label-st">申通账单</span>
       </div>
       <div class="upload-box" id="box-st">
         <span class="upload-filename placeholder" id="name-st">点击选择文件...</span>
@@ -313,7 +313,7 @@
     <div class="upload-item">
       <div class="upload-label">
         <span class="dot" id="dot-zt"></span>
-        中通账单
+        <span id="label-zt">中通账单</span>
       </div>
       <div class="upload-box" id="box-zt">
         <span class="upload-filename placeholder" id="name-zt">点击选择文件...</span>
@@ -344,9 +344,33 @@
 
 </div>
 
+<!-- 历史记录区域 -->
+<div style="max-width:1100px; margin-top:20px;">
+  <div class="card">
+    <div class="card-title">历史处理记录</div>
+    <div id="history-area">
+      <div style="color:var(--color-text-secondary);font-size:13px;text-align:center;padding:20px;">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.hist-table { width:100%; border-collapse:collapse; font-size:13px; }
+.hist-table th { background:var(--color-background-secondary); color:var(--color-text-secondary); font-weight:500; font-size:12px; padding:8px 14px; text-align:left; border-bottom:0.5px solid var(--border); }
+.hist-table td { padding:10px 14px; border-bottom:0.5px solid var(--border); color:var(--text); vertical-align:middle; }
+.hist-table tr:last-child td { border-bottom:none; }
+.hist-table tr:hover td { background:var(--surface); }
+.badge-ok   { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(61,214,140,0.12); color:#3dd68c; }
+.badge-fail { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(247,95,95,0.12); color:#f75f5f; }
+.badge-none { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(107,112,153,0.12); color:#6b7099; }
+.dl-hist-btn { font-size:12px; padding:4px 12px; border-radius:6px; border:0.5px solid var(--border); background:transparent; color:#4f8ef7; cursor:pointer; white-space:nowrap; }
+.dl-hist-btn:hover { background:rgba(79,142,247,0.08); }
+</style>
+
 <script>
-  let uploadedSt = false;
-  let uploadedZt = false;
+  let uploadedSt  = false;
+  let uploadedZt  = false;
+  let pollTimer   = null;  // 轮询定时器
 
   // ---- 上传文件 ----
   async function uploadFile(input, type) {
@@ -390,15 +414,13 @@
 
   // ---- 开始运行 ----
   async function startRun() {
-    const btn = document.getElementById('run-btn');
+    const btn   = document.getElementById('run-btn');
     const dlBtn = document.getElementById('dl-btn');
 
-    // 清空日志
     clearLog();
+    hideAlert();
     dlBtn.classList.remove('show');
-
-    // 设置运行中状态
-    btn.disabled = true;
+    btn.disabled    = true;
     btn.textContent = '⏳ 运行中...';
     setStatus('running', '任务运行中...');
 
@@ -408,41 +430,42 @@
 
       if (!data.ok) {
         appendLog('❌ ' + data.msg, 'err');
+        showAlert(data.msg, 'err');
         setStatus('error', '启动失败');
-        btn.disabled = false;
+        btn.disabled    = false;
         btn.textContent = '▶ 开始运行';
         return;
       }
 
-      // 启动成功，开始监听日志流
+      // 启动SSE实时日志
       listenLogs();
+      // 同时启动轮询兜底，防止SSE断连后状态卡住
+      startPolling();
 
     } catch (e) {
       appendLog('❌ 网络错误，请检查服务是否正常', 'err');
+      showAlert('网络错误，请检查服务是否正常', 'err');
       setStatus('error', '网络错误');
-      btn.disabled = false;
+      btn.disabled    = false;
       btn.textContent = '▶ 开始运行';
     }
   }
 
-  // ---- 监听实时日志（SSE）----
+  // ---- SSE 实时日志 ----
   function listenLogs() {
     const es = new EventSource('/logs');
 
     es.onmessage = function(e) {
       const msg = JSON.parse(e.data);
-
-      // 心跳，忽略
       if (msg === '__PING__') return;
-
-      // 任务结束信号
       if (msg === '__DONE__') {
         es.close();
+        stopPolling();
         onTaskDone();
         return;
       }
 
-      // 根据内容决定样式
+      // 日志样式分级显示
       let cls = '';
       if (msg.startsWith('✅') || msg.startsWith('🎉')) cls = 'ok';
       else if (msg.startsWith('❌'))                    cls = 'err';
@@ -453,10 +476,35 @@
       appendLog(msg, cls);
     };
 
+    // SSE断连时不立即触发onTaskDone，交给轮询处理
     es.onerror = function() {
       es.close();
-      onTaskDone();
     };
+  }
+
+  // ---- 轮询兜底（每3秒查一次状态）----
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch('/status');
+        const data = await res.json();
+        // 任务已结束（服务端is_running=false且有结果）
+        if (!data.running && data.result && data.result.output_folder) {
+          stopPolling();
+          onTaskDone();
+        }
+      } catch(e) {
+        // 网络异常时继续等待
+      }
+    }, 3000);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
   }
 
   // ---- 任务结束处理 ----
@@ -467,15 +515,48 @@
     btn.disabled    = false;
     btn.textContent = '▶ 再次运行';
 
-    // 查询是否成功
     fetch('/status').then(r => r.json()).then(data => {
       if (data.result && data.result.success) {
         setStatus('done', '运行完成 ✅');
         dlBtn.classList.add('show');
+        hideAlert();
       } else {
         setStatus('error', '运行异常，请查看日志');
+        showAlert('运行异常，请查看日志了解详情', 'err');
       }
+      // 刷新历史记录
+      setTimeout(loadHistory, 500);
     });
+  }
+
+  // ---- 顶部提示条 ----
+  function showAlert(msg, type) {
+    let el = document.getElementById('top-alert');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'top-alert';
+      el.style.cssText = `
+        position:fixed; top:0; left:0; right:0; z-index:999;
+        padding:12px 20px; font-size:13px; font-weight:500;
+        text-align:center; transition:opacity 0.3s;
+      `;
+      document.body.prepend(el);
+    }
+    if (type === 'err') {
+      el.style.background = 'rgba(247,95,95,0.95)';
+      el.style.color      = '#fff';
+    } else {
+      el.style.background = 'rgba(61,214,140,0.95)';
+      el.style.color      = '#fff';
+    }
+    el.textContent  = msg;
+    el.style.opacity = '1';
+    el.style.display = 'block';
+  }
+
+  function hideAlert() {
+    const el = document.getElementById('top-alert');
+    if (el) el.style.display = 'none';
   }
 
   // ---- 日志工具 ----
@@ -494,11 +575,71 @@
   }
 
   function setStatus(state, text) {
-    const dot  = document.getElementById('status-dot');
+    const dot   = document.getElementById('status-dot');
     const txtEl = document.getElementById('status-text');
-    dot.className   = 'status-dot ' + state;
+    dot.className    = 'status-dot ' + state;
     txtEl.textContent = text;
   }
+
+  // ---- 历史记录 ----
+  async function loadHistory() {
+    const area = document.getElementById('history-area');
+    try {
+      const res     = await fetch('/history');
+      const records = await res.json();
+
+      if (!records || records.length === 0) {
+        area.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">暂无历史记录</div>';
+        return;
+      }
+
+      let rows = records.map(r => {
+        const badge = r.last_result === '成功'
+          ? `<span class="badge-ok">✅ 成功</span>`
+          : r.last_result === '失败'
+          ? `<span class="badge-fail">❌ 失败</span>`
+          : `<span class="badge-none">— 无记录</span>`;
+
+        const dlBtn = `<button class="dl-hist-btn" onclick="downloadMonth('${r.month}')">⬇ 下载</button>`;
+        const count = r.run_count > 0 ? `${r.run_count}次` : '—';
+        const time  = r.last_time  || '—';
+        const dur   = r.last_duration || '—';
+
+        return `<tr>
+          <td style="font-family:var(--mono);font-weight:500">${r.month}</td>
+          <td>${badge}</td>
+          <td style="color:var(--muted)">${count}</td>
+          <td style="color:var(--muted);font-family:var(--mono);font-size:12px">${time}</td>
+          <td style="color:var(--muted)">${dur}</td>
+          <td>${dlBtn}</td>
+        </tr>`;
+      }).join('');
+
+      area.innerHTML = `
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>月份</th>
+              <th>最后结果</th>
+              <th>运行次数</th>
+              <th>最后运行时间</th>
+              <th>耗时</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } catch(e) {
+      area.innerHTML = '<div style="color:var(--danger);font-size:13px;padding:12px;">历史记录加载失败</div>';
+    }
+  }
+
+  async function downloadMonth(month) {
+    window.location.href = `/download/${month}`;
+  }
+
+  // 页面加载时自动拉取历史记录
+  window.addEventListener('load', loadHistory);
 </script>
 </body>
 </html>
