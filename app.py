@@ -295,8 +295,8 @@ def download():
 # ====================== 启动 ======================
 if __name__ == "__main__":
     print("=" * 60)
-    print("  毅播快递对账系统 Web服务启动")
-    print("  局域网访问地址：http://[本机IP]:5000")
-    print("  本机访问地址：  http://127.0.0.1:5000")
+    print("  YiBo Express Bill System - Web Service")
+    print("  LAN Access:   http://[LAN IP]:5000")
+    print("  Local Access: http://127.0.0.1:5000")
     print("=" * 60)
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
