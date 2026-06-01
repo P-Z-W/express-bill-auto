@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-快递订单对账匹配模块（V1.7 最终功能版）
+快递订单对账匹配模块（V2.1 最终功能版）
 ==================================================
 【功能说明】
   1. 运单号匹配 → 回填所属团队（支持批量匹配，自动清洗运单号格式）
@@ -13,37 +13,24 @@
   1. 全国均重模式
      - 触发条件：结算重量≤1kg OR 重量1-3kg但省份非新疆/西藏
      - 计算逻辑：金额留空（需人工按均重规则补充）
-     - 适配场景：普通省份小重量订单
-
   2. 单票模式（重量≥3kg）
      - 触发条件：结算重量≥3kg（所有省份通用）
-     - 计算公式：应付金额 = 结算重量 × 对应省份续重单价 + (对应省份超3kg面单费 - 对应快递充单价格)
-     - 字段来源：
-       → 续重单价：申通/中通报价sheet的E列（iloc[4]）
-       → 超3kg面单费：申通报价sheet的D列（iloc[3]）
-       → 充单价格：客户快递加收单价信息记录sheet的L列（iloc[11]）
-
+     - 计算公式：应付金额 = 结算重量 × 续重单价 + (超3kg面单费 - 充单价格)
   3. 新西1-3公斤模式（新疆/西藏专属）
      - 触发条件：目的省份为新疆/西藏 AND 结算重量1kg＜重量＜3kg
-     - 计算公式：应付金额 = 对应省份3kg内面单费 + 结算重量 × 对应省份续重单价 - 对应快递充单价格
+     - 计算公式：应付金额 = 3kg内面单费 + 结算重量 × 续重单价 - 充单价格
 
 【智能省份匹配说明】
-  不再固定截取前2个字，采用开头模糊匹配：
-  例：黑龙江省 → 匹配报价表「黑龙江」
-      新疆维吾尔自治区 → 匹配报价表「新疆」
-      西藏自治区 → 匹配报价表「西藏」
-  无需手动改Excel省份名称，自动兼容带「省/自治区」后缀的订单省份
+  开头模糊匹配，自动兼容带「省/自治区」后缀的订单省份
+
+【V2.1 变更】
+  - SOURCE_FILE / RESULT_FILE / 订单文件查找路径全部走 settings，支持月份子目录
+  - 其余所有计费逻辑、匹配逻辑、样式逻辑完全保留原V1.7框架
 
 【price_config.xlsx字段约定】
   申通报价                 A列=省份  B列=3kg内面单费  D列=超3kg面单费  E列=续重单价
-  中通报价                 同上结构规则
+  中通报价                 同上
   客户快递加收单价信息记录  K列=快递类型  L列=充单价格
-
-【维护备注】
-  1. 智能省份匹配，兼容省、自治区后缀，不用改配置表
-  2. 新西固定取B列3.2，单票取D列，续重统一E列
-  3. 兼容Python3.14 + 新版pandas，修复fillna语法
-  4. 所有报错中文提示，日志清晰，方便排查
 ==================================================
 """
 import pandas as pd
@@ -55,23 +42,16 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 # 导入项目统一配置（从settings.py读取路径，避免硬编码）
 from config import settings
 
-# ====================== 路径配置（统一从settings读取，避免硬编码）======================
-# 输出文件夹路径（自动创建，无需手动新建）
-OUTPUT_FOLDER = settings.OUTPUT_FOLDER
-# 清洗合并总账单路径（merge_express.py生成）
-EXPRESS_FILE = os.path.join(OUTPUT_FOLDER, settings.EXPRESS_OUTPUT_FILE)
-# 最终对账结果输出路径（带格式的Excel）
-RESULT_FILE = os.path.join(OUTPUT_FOLDER, settings.RESULT_FILE)
-# 报价表配置路径
-PRICE_CONFIG_PATH = "config/price_config.xlsx"
+# ====================== 路径配置（统一从settings读取）======================
+OUTPUT_FOLDER     = settings.OUTPUT_FOLDER                                    # output/YYYY-MM
+EXPRESS_FILE      = os.path.join(OUTPUT_FOLDER, settings.EXPRESS_OUTPUT_FILE) # 清洗合并总账单
+RESULT_FILE       = os.path.join(OUTPUT_FOLDER, settings.RESULT_FILE)         # 最终对账结果
+PRICE_CONFIG_PATH = os.path.join(settings.CONFIG_FOLDER, "price_config.xlsx") # 报价表
 
 
-# ====================== 工具基础函数（通用工具，后续可复用）=====================
+# ====================== 工具基础函数 ======================
 def ensure_folder(folder_path):
-    """
-    确保目标文件夹存在，不存在则自动创建
-    :param folder_path: 文件夹路径
-    """
+    """确保目标文件夹存在，不存在则自动创建"""
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
         print(f"📂 自动创建输出文件夹：{folder_path}")
@@ -87,7 +67,6 @@ def get_calc_type(dest_prov, weight):
     """
     if weight >= 3:
         return "单票"
-    # 智能匹配省份开头，不再截取固定字数
     if dest_prov.startswith("新疆") or dest_prov.startswith("西藏"):
         return "新西1-3公斤"
     return "全国均重"
@@ -120,7 +99,7 @@ def load_price_config():
             st_map[prov_name] = {
                 "面单费_3kg内": float(row.iloc[1]),  # B列 3kg内面单
                 "面单费_超3kg": float(row.iloc[3]),  # D列 超3kg面单
-                "续重单价": float(row.iloc[4])       # E列 续重
+                "续重单价":     float(row.iloc[4])   # E列 续重
             }
         except Exception as e:
             print(f"❌ 申通报价第{idx+2}行数据异常：{str(e)}")
@@ -144,7 +123,7 @@ def load_price_config():
             zt_map[prov_name] = {
                 "面单费_3kg内": float(row.iloc[1]),
                 "面单费_超3kg": float(row.iloc[3]),
-                "续重单价": float(row.iloc[4])
+                "续重单价":     float(row.iloc[4])
             }
         except Exception as e:
             print(f"❌ 中通报价第{idx+2}行数据异常：{str(e)}")
@@ -193,9 +172,9 @@ def calculate_single_fee(row, price_dict):
     按计费模式，计算单条订单的应付金额
     智能省份匹配：遍历报价省份，用开头匹配
     """
-    calc_method = row["实际计算方式"]
+    calc_method  = row["实际计算方式"]
     express_type = str(row["快递类型"]).strip()
-    dest_prov = str(row["目的省份"]).strip()
+    dest_prov    = str(row["目的省份"]).strip()
     try:
         weight = float(row["结算重量"])
     except Exception as e:
@@ -211,7 +190,7 @@ def calculate_single_fee(row, price_dict):
         print(f"⚠️  运单号{row['运单号']}：未知快递类型'{express_type}'，金额置0")
         return round(0.00, 2)
 
-    charge_price = price_dict["充单价"][express_type]
+    charge_price    = price_dict["充单价"][express_type]
     express_prov_map = price_dict[express_type]
 
     # 智能开头匹配省份
@@ -244,7 +223,9 @@ def calculate_single_fee(row, price_dict):
 def load_source_data():
     """
     读取merge_express.py生成的清洗合并账单，和order_db.py生成的订单匹配文件
+    V2.1：路径全部走settings，支持月份子目录
     """
+    # 读取清洗合并总账单
     if not os.path.exists(EXPRESS_FILE):
         print("=" * 60)
         print("❌ 未找到清洗合并总账单")
@@ -257,6 +238,7 @@ def load_source_data():
     except Exception as e:
         print(f"❌ 读取清洗合并账单失败：{str(e)}")
         exit(1)
+
     # 校验关键列
     required_cols_express = ["运单号", "目的省份", "结算重量", "快递类型"]
     missing_cols = [col for col in required_cols_express if col not in df_express.columns]
@@ -265,26 +247,31 @@ def load_source_data():
         exit(1)
     print(f"✅ 成功读取清洗合并总账单：共 {len(df_express)} 条订单记录")
 
-    # 查找订单文件
-    order_files = [f for f in os.listdir(OUTPUT_FOLDER)
-                   if f.startswith(settings.ORDER_FILE_PREFIX)]
+    # 查找订单文件（在当月 output/YYYY-MM/ 目录下查找）
+    order_files = [
+        f for f in os.listdir(OUTPUT_FOLDER)
+        if f.startswith(settings.ORDER_FILE_PREFIX)
+    ]
     if not order_files:
         print("=" * 60)
         print("❌ 未找到订单匹配文件")
         print(f"👉 请先运行 order_db.py，生成前缀为'{settings.ORDER_FILE_PREFIX}'的文件")
+        print(f"👉 查找目录：{OUTPUT_FOLDER}")
         print("=" * 60)
         exit(1)
+
     # 取最新文件
     latest_order_file = sorted(order_files)[-1]
-    order_file_path = os.path.join(OUTPUT_FOLDER, latest_order_file)
+    order_file_path   = os.path.join(OUTPUT_FOLDER, latest_order_file)
     try:
         df_order = pd.read_excel(order_file_path, engine="openpyxl")
     except Exception as e:
         print(f"❌ 读取订单匹配文件'{latest_order_file}'失败：{str(e)}")
         exit(1)
+
     # 校验关键列
     required_cols_order = ["运单号", "所属团队"]
-    missing_cols_order = [col for col in required_cols_order if col not in df_order.columns]
+    missing_cols_order  = [col for col in required_cols_order if col not in df_order.columns]
     if missing_cols_order:
         print(f"❌ 订单匹配文件缺少关键列：{missing_cols_order}")
         exit(1)
@@ -295,14 +282,12 @@ def load_source_data():
 
 # ====================== 【5】运单号匹配函数 ======================
 def match_team_by_waybill():
-    """
-    核心业务：加载 → 清洗运单号 → 匹配团队 → 生成计算方式 → 算金额
-    """
+    """核心业务：加载 → 清洗运单号 → 匹配团队 → 生成计算方式 → 算金额"""
     df_express, df_order = load_source_data()
 
     # 运单号清洗
     df_express["运单号"] = df_express["运单号"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
-    df_order["运单号"] = df_order["运单号"].astype(str).str.strip()
+    df_order["运单号"]   = df_order["运单号"].astype(str).str.strip()
     print("✅ 运单号清洗完成：已去除末尾'.0'，统一格式")
 
     # 构建映射字典
@@ -310,7 +295,7 @@ def match_team_by_waybill():
         .set_index("运单号")["所属团队"].to_dict()
     print(f"✅ 构建运单号-团队映射：共 {len(waybill_team_map)} 个唯一运单号")
 
-    # 回填所属团队 兼容新版pandas
+    # 回填所属团队，兼容新版pandas
     df_express["所属团队"] = df_express["运单号"].map(waybill_team_map)
     df_express["所属团队"] = df_express["所属团队"].fillna("未匹配")
 
@@ -338,7 +323,7 @@ def match_team_by_waybill():
     )
 
     # 统计匹配结果
-    matched_count = len(df_express[df_express["所属团队"] != "未匹配"])
+    matched_count   = len(df_express[df_express["所属团队"] != "未匹配"])
     unmatched_count = len(df_express) - matched_count
     print(f"✅ 运单号匹配完成：")
     print(f"   - 总订单数：{len(df_express)} 条")
@@ -350,19 +335,15 @@ def match_team_by_waybill():
 
 # ====================== 【6】结果导出函数 ======================
 def export_styled_result(df_result):
-    """
-    导出带边框、表头蓝色背景、居中对齐、固定列宽Excel
-    """
+    """导出带边框、表头蓝色背景、居中对齐、固定列宽Excel"""
     ensure_folder(OUTPUT_FOLDER)
 
-    # 导出基础Excel
     try:
         df_result.to_excel(RESULT_FILE, index=False, engine="openpyxl")
     except Exception as e:
         print(f"❌ 导出Excel失败：{str(e)}")
         exit(1)
 
-    # 加载样式
     try:
         wb = load_workbook(RESULT_FILE)
         ws = wb.active
@@ -373,17 +354,16 @@ def export_styled_result(df_result):
         exit(1)
 
     # 样式定义
-    thin_border = Side(style="thin", color="000000")
-    border = Border(left=thin_border, right=thin_border, top=thin_border, bottom=thin_border)
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    thin_border  = Side(style="thin", color="000000")
+    border       = Border(left=thin_border, right=thin_border, top=thin_border, bottom=thin_border)
+    header_font  = Font(bold=True, color="FFFFFF", size=11)
+    header_fill  = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     center_align = Alignment(horizontal="center", vertical="center")
 
     # 全表边框+居中
-    last_col_letter = chr(ord('A') + max_col - 1)
     for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
         for cell in row:
-            cell.border = border
+            cell.border    = border
             cell.alignment = center_align
 
     # 表头样式
@@ -393,20 +373,12 @@ def export_styled_result(df_result):
 
     # 固定列宽
     column_widths = {
-        'A': 20,   # 运单号
-        'B': 18,   # 快递类型
-        'C': 12,   # 目的省份
-        'D': 12,   # 结算重量
-        'E': 10,   # 其他字段
-        'F': 16,   # 所属团队
-        'G': 16,   # 实际计算方式
-        'H': 16,   # 单票应付金额
-        'I': 28    # 备注
+        'A': 20, 'B': 18, 'C': 12, 'D': 12,
+        'E': 10, 'F': 16, 'G': 16, 'H': 16, 'I': 28
     }
     for col, width in column_widths.items():
         ws.column_dimensions[col].width = width
 
-    # 保存
     try:
         wb.save(RESULT_FILE)
     except Exception as e:
@@ -420,11 +392,9 @@ def export_styled_result(df_result):
 
 # ====================== 【7】主函数 ======================
 def run_reconciliation():
-    """
-    程序主入口：打印日志 → 执行流程 → 导出结果
-    """
+    """程序主入口：打印日志 → 执行流程 → 导出结果"""
     print("=" * 80)
-    print("📦 快递订单对账匹配程序（V1.7 最终功能版）")
+    print("📦 快递订单对账匹配程序（V2.1）")
     print(f"⏰ 启动时间：{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📂 输出路径：{OUTPUT_FOLDER}")
     print("=" * 80)

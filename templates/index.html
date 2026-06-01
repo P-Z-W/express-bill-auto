@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>毅播快递对账系统</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --border:    #2a2d3a;
+    --accent:    #4f8ef7;
+    --accent2:   #3dd68c;
+    --warn:      #f7954f;
+    --danger:    #f75f5f;
+    --text:      #e4e6f0;
+    --muted:     #6b7099;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Noto Sans SC', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  /* ---- 顶部标题 ---- */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-left h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .header-left h1 span { color: var(--accent); }
+  .header-left p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: var(--mono);
+  }
+  .month-badge {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 20px;
+    text-align: center;
+  }
+  .month-badge .label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .month-badge .value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-top: 2px;
+  }
+
+  /* ---- 主体布局 ---- */
+  .main {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    max-width: 1100px;
+  }
+
+  /* ---- 卡片 ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  /* ---- 上传区域 ---- */
+  .upload-item {
+    margin-bottom: 16px;
+  }
+  .upload-label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .upload-label .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+  .upload-label .dot.done { background: var(--accent2); }
+
+  .upload-box {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-box:hover {
+    border-color: var(--accent);
+    background: rgba(79, 142, 247, 0.04);
+  }
+  .upload-box.uploaded {
+    border-color: var(--accent2);
+    border-style: solid;
+  }
+  .upload-box input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .upload-filename {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+  }
+  .upload-filename.placeholder { color: var(--muted); }
+  .upload-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  /* ---- 状态提示 ---- */
+  .upload-msg {
+    font-size: 12px;
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    display: none;
+  }
+  .upload-msg.show { display: block; }
+  .upload-msg.ok   { background: rgba(61,214,140,0.1); color: var(--accent2); }
+  .upload-msg.err  { background: rgba(247,95,95,0.1);  color: var(--danger); }
+
+  /* ---- 运行按钮 ---- */
+  .run-btn {
+    width: 100%;
+    margin-top: 24px;
+    padding: 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: var(--sans);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+  }
+  .run-btn:hover:not(:disabled) { background: #3a7ae0; }
+  .run-btn:active:not(:disabled) { transform: scale(0.98); }
+  .run-btn:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  /* ---- 下载按钮 ---- */
+  .dl-btn {
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px;
+    background: transparent;
+    color: var(--accent2);
+    border: 1.5px solid var(--accent2);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--sans);
+    cursor: pointer;
+    transition: background 0.2s;
+    display: none;
+    text-decoration: none;
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+  .dl-btn:hover { background: rgba(61,214,140,0.08); }
+  .dl-btn.show  { display: block; }
+
+  /* ---- 日志区域 ---- */
+  .log-card { display: flex; flex-direction: column; }
+  .log-box {
+    flex: 1;
+    background: #0a0c12;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.8;
+    overflow-y: auto;
+    height: 480px;
+    color: #9da5c7;
+  }
+  .log-box .log-line { display: block; }
+  .log-box .log-line.ok     { color: var(--accent2); }
+  .log-box .log-line.err    { color: var(--danger); }
+  .log-box .log-line.warn   { color: var(--warn); }
+  .log-box .log-line.accent { color: var(--accent); }
+  .log-box .log-line.sep    { color: var(--border); }
+
+  /* 状态栏 */
+  .log-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+  .status-dot.running {
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .status-dot.done    { background: var(--accent2); }
+  .status-dot.error   { background: var(--danger); }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.5; transform: scale(0.8); }
+  }
+  .status-text {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* 滚动条 */
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-track { background: transparent; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- 顶部标题 -->
+<div class="header">
+  <div class="header-left">
+    <h1>毅播 <span>快递对账系统</span></h1>
+    <p>express-bill-auto · v2.1</p>
+  </div>
+  <div class="month-badge">
+    <div class="label">处理月份</div>
+    <div class="value">{{ process_month }}</div>
+  </div>
+</div>
+
+<!-- 主体 -->
+<div class="main">
+
+  <!-- 左侧：操作面板 -->
+  <div class="card">
+    <div class="card-title">账单上传 &amp; 运行</div>
+
+    <!-- 申通上传 -->
+    <div class="upload-item">
+      <div class="upload-label">
+        <span class="dot" id="dot-st"></span>
+        申通账单
+      </div>
+      <div class="upload-box" id="box-st">
+        <span class="upload-filename placeholder" id="name-st">点击选择文件...</span>
+        <span class="upload-icon">📄</span>
+        <input type="file" accept=".xlsx" onchange="uploadFile(this, 'st')">
+      </div>
+      <div class="upload-msg" id="msg-st"></div>
+    </div>
+
+    <!-- 中通上传 -->
+    <div class="upload-item">
+      <div class="upload-label">
+        <span class="dot" id="dot-zt"></span>
+        中通账单
+      </div>
+      <div class="upload-box" id="box-zt">
+        <span class="upload-filename placeholder" id="name-zt">点击选择文件...</span>
+        <span class="upload-icon">📄</span>
+        <input type="file" accept=".xlsx" onchange="uploadFile(this, 'zt')">
+      </div>
+      <div class="upload-msg" id="msg-zt"></div>
+    </div>
+
+    <!-- 开始运行 -->
+    <button class="run-btn" id="run-btn" onclick="startRun()">▶ 开始运行</button>
+
+    <!-- 下载结果 -->
+    <a class="dl-btn" id="dl-btn" href="/download">⬇ 下载结果 ZIP</a>
+  </div>
+
+  <!-- 右侧：日志面板 -->
+  <div class="card log-card">
+    <div class="card-title">运行日志</div>
+    <div class="log-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">等待运行...</span>
+    </div>
+    <div class="log-box" id="log-box">
+      <span class="log-line accent">系统就绪，等待操作...</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let uploadedSt = false;
+  let uploadedZt = false;
+
+  // ---- 上传文件 ----
+  async function uploadFile(input, type) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const nameEl = document.getElementById(`name-${type}`);
+    const msgEl  = document.getElementById(`msg-${type}`);
+    const boxEl  = document.getElementById(`box-${type}`);
+    const dotEl  = document.getElementById(`dot-${type}`);
+
+    nameEl.textContent = file.name;
+    nameEl.classList.remove('placeholder');
+    showMsg(msgEl, '⏳ 上传中...', '');
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+      const res  = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (data.ok) {
+        showMsg(msgEl, data.msg, 'ok');
+        boxEl.classList.add('uploaded');
+        dotEl.classList.add('done');
+        if (type === 'st') uploadedSt = true;
+        if (type === 'zt') uploadedZt = true;
+      } else {
+        showMsg(msgEl, data.msg, 'err');
+      }
+    } catch (e) {
+      showMsg(msgEl, '❌ 上传失败，请重试', 'err');
+    }
+  }
+
+  function showMsg(el, text, type) {
+    el.textContent = text;
+    el.className   = 'upload-msg show' + (type ? ' ' + type : '');
+  }
+
+  // ---- 开始运行 ----
+  async function startRun() {
+    const btn = document.getElementById('run-btn');
+    const dlBtn = document.getElementById('dl-btn');
+
+    // 清空日志
+    clearLog();
+    dlBtn.classList.remove('show');
+
+    // 设置运行中状态
+    btn.disabled = true;
+    btn.textContent = '⏳ 运行中...';
+    setStatus('running', '任务运行中...');
+
+    try {
+      const res  = await fetch('/run', { method: 'POST' });
+      const data = await res.json();
+
+      if (!data.ok) {
+        appendLog('❌ ' + data.msg, 'err');
+        setStatus('error', '启动失败');
+        btn.disabled = false;
+        btn.textContent = '▶ 开始运行';
+        return;
+      }
+
+      // 启动成功，开始监听日志流
+      listenLogs();
+
+    } catch (e) {
+      appendLog('❌ 网络错误，请检查服务是否正常', 'err');
+      setStatus('error', '网络错误');
+      btn.disabled = false;
+      btn.textContent = '▶ 开始运行';
+    }
+  }
+
+  // ---- 监听实时日志（SSE）----
+  function listenLogs() {
+    const es = new EventSource('/logs');
+
+    es.onmessage = function(e) {
+      const msg = JSON.parse(e.data);
+
+      // 心跳，忽略
+      if (msg === '__PING__') return;
+
+      // 任务结束信号
+      if (msg === '__DONE__') {
+        es.close();
+        onTaskDone();
+        return;
+      }
+
+      // 根据内容决定样式
+      let cls = '';
+      if (msg.startsWith('✅') || msg.startsWith('🎉')) cls = 'ok';
+      else if (msg.startsWith('❌'))                    cls = 'err';
+      else if (msg.startsWith('⚠️'))                   cls = 'warn';
+      else if (msg.startsWith('📌') || msg.startsWith('🚀')) cls = 'accent';
+      else if (msg.startsWith('='))                     cls = 'sep';
+
+      appendLog(msg, cls);
+    };
+
+    es.onerror = function() {
+      es.close();
+      onTaskDone();
+    };
+  }
+
+  // ---- 任务结束处理 ----
+  function onTaskDone() {
+    const btn   = document.getElementById('run-btn');
+    const dlBtn = document.getElementById('dl-btn');
+
+    btn.disabled    = false;
+    btn.textContent = '▶ 再次运行';
+
+    // 查询是否成功
+    fetch('/status').then(r => r.json()).then(data => {
+      if (data.result && data.result.success) {
+        setStatus('done', '运行完成 ✅');
+        dlBtn.classList.add('show');
+      } else {
+        setStatus('error', '运行异常，请查看日志');
+      }
+    });
+  }
+
+  // ---- 日志工具 ----
+  function appendLog(text, cls) {
+    const box  = document.getElementById('log-box');
+    const span = document.createElement('span');
+    span.className   = 'log-line' + (cls ? ' ' + cls : '');
+    span.textContent = text;
+    box.appendChild(span);
+    box.appendChild(document.createElement('br'));
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById('log-box').innerHTML = '';
+  }
+
+  function setStatus(state, text) {
+    const dot  = document.getElementById('status-dot');
+    const txtEl = document.getElementById('status-text');
+    dot.className   = 'status-dot ' + state;
+    txtEl.textContent = text;
+  }
+</script>
+</body>
+</html>
