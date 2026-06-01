@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-毅播快递对账系统 - Web服务主程序
+毅播快递对账系统 - Web服务主程序 V2.5
 ==================================================
 【说明】
   Flask轻量Web服务，提供局域网浏览器操作界面
@@ -9,15 +9,10 @@
     2. 按顺序调用四个业务模块，实时推送日志到浏览器
     3. 运行完成后打包 output/YYYY-MM/ 提供下载
 
-【启动方式】
-  python app.py
-  浏览器访问 http://局域网IP:5000
-
-【并发保护】
-  同一时间只允许一个任务运行，其他人点击会收到提示
-
-【V2.1修复】
-  修复 push_log 和 LogCapture 互相触发导致的日志死循环问题
+【V2.5 新增】
+  运行日志自动保存到 output/YYYY-MM/run.log
+  追加模式：多次运行不覆盖，每次运行用分隔线区分
+  记录内容：运行时间、处理月份、完整日志、结果、耗时
 ==================================================
 """
 import os
@@ -54,51 +49,106 @@ def get_process_month():
 
 def push_log(msg):
     """
-    推送日志到队列
-    【修复】去掉 print()，断开和 LogCapture 的循环触发链
-    只往队列写，不再调用print，彻底避免死循环
+    推送日志到浏览器队列
+    只往队列写，不调用print，避免和LogCapture死循环
     """
     log_queue.put(msg)
 
 
+# ====================== 日志文件工具 ======================
+def get_log_path(output_folder):
+    """获取日志文件路径：output/YYYY-MM/run.log"""
+    return os.path.join(output_folder, "run.log")
+
+
+def get_run_count(log_path):
+    """统计 run.log 里已有几次运行记录，用于标注第N次运行"""
+    if not os.path.exists(log_path):
+        return 1
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return content.count("【第") + 1
+    except Exception:
+        return 1
+
+
+def write_log_header(log_file, process_month, run_count):
+    """写入每次运行的分隔头"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_file.write("\n" + "=" * 60 + "\n")
+    log_file.write(f"【第{run_count}次运行】{now}\n")
+    log_file.write(f"处理月份：{process_month}\n")
+    log_file.write("=" * 60 + "\n")
+    log_file.flush()
+
+
+def write_log_footer(log_file, success, start_time):
+    """写入运行结果和耗时"""
+    end_time = datetime.now()
+    elapsed  = end_time - start_time
+    minutes  = int(elapsed.total_seconds() // 60)
+    seconds  = int(elapsed.total_seconds() % 60)
+    result   = "成功 ✅" if success else "失败 ❌"
+    log_file.write("\n" + "-" * 60 + "\n")
+    log_file.write(f"运行结果：{result}\n")
+    log_file.write(f"结束时间：{end_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+    log_file.write(f"耗时：{minutes}分{seconds}秒\n")
+    log_file.write("-" * 60 + "\n")
+    log_file.flush()
+
+
+# ====================== LogCapture ======================
 class LogCapture(io.StringIO):
     """
     劫持标准输出，捕获业务模块所有 print() 推入队列
-    【修复】直接写队列，不调用 push_log，彻底断开循环链
-    保留 _real_stdout 把内容同步打印到服务器控制台方便调试
+    同时追加写入 run.log 日志文件
     """
-    def __init__(self, real_stdout):
+    def __init__(self, real_stdout, log_file=None):
         super().__init__()
         self._real_stdout = real_stdout
+        self._log_file    = log_file
 
     def write(self, msg):
         if msg.strip():
-            log_queue.put(msg.strip())            # 直接写队列，不经过push_log
-            self._real_stdout.write(msg + "\n")   # 同步打印到服务器控制台
+            log_queue.put(msg.strip())           # 推送到浏览器
+            self._real_stdout.write(msg + "\n")  # 打印到服务器控制台
+            if self._log_file:                   # 写入日志文件
+                self._log_file.write(msg.strip() + "\n")
+                self._log_file.flush()           # 实时刷新防崩溃丢日志
         return len(msg)
 
     def flush(self):
-        pass  # 防止flush报错
+        pass
 
 
 # ====================== 业务任务线程 ======================
 def run_task(data_folder, output_folder, process_month):
     """
     独立线程里按顺序执行四个业务模块
-    LogCapture 劫持标准输出，所有模块的 print 实时推送到浏览器
+    所有日志实时推送到浏览器，同时追加写入 run.log
     """
     global is_running, task_result
 
-    real_stdout = sys.stdout           # 保存真实stdout
-    sys.stdout  = LogCapture(real_stdout)  # 替换为劫持版本
+    start_time = datetime.now()
+    success    = False
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    # 打开日志文件（追加模式，多次运行不覆盖）
+    log_path  = get_log_path(output_folder)
+    run_count = get_run_count(log_path)
+    log_file  = open(log_path, "a", encoding="utf-8")
+    write_log_header(log_file, process_month, run_count)
+
+    real_stdout = sys.stdout
+    sys.stdout  = LogCapture(real_stdout, log_file)
 
     try:
         push_log(f"🚀 开始处理 {process_month} 月份数据")
         push_log(f"📂 数据目录：{data_folder}")
         push_log(f"📂 输出目录：{output_folder}")
         push_log("=" * 60)
-
-        os.makedirs(output_folder, exist_ok=True)
 
         # ---------- 第一步：数据库下载订单 ----------
         push_log(f"\n📌 第一步：从数据库下载 {process_month} 订单数据")
@@ -132,6 +182,7 @@ def run_task(data_folder, output_folder, process_month):
         push_log(f"🎉 {process_month} 全部流程执行完成！")
         push_log("📦 可点击下方按钮下载结果文件")
 
+        success     = True
         task_result = {"success": True, "output_folder": output_folder}
 
     except Exception as e:
@@ -141,9 +192,11 @@ def run_task(data_folder, output_folder, process_month):
         task_result = {"success": False, "output_folder": output_folder}
 
     finally:
-        sys.stdout = real_stdout   # 恢复真实stdout
+        write_log_footer(log_file, success, start_time)
+        log_file.close()
+        sys.stdout = real_stdout
         is_running = False
-        push_log("__DONE__")       # 通知前端任务结束
+        push_log("__DONE__")
 
 
 # ====================== 路由：首页 ======================
@@ -215,7 +268,6 @@ def run():
             "msg": f"❌ data/{process_month}/ 目录为空，请先上传账单文件"
         }), 400
 
-    # 在独立线程里跑业务，不阻塞 Web 服务
     t = threading.Thread(
         target=run_task,
         args=(data_folder, output_folder, process_month),
@@ -229,10 +281,7 @@ def run():
 # ====================== 路由：实时日志（SSE）======================
 @app.route("/logs")
 def logs():
-    """
-    Server-Sent Events：实时把日志队列内容推送给浏览器
-    前端 EventSource 监听，收到日志实时显示
-    """
+    """Server-Sent Events：实时把日志队列内容推送给浏览器"""
     def generate():
         while True:
             try:
@@ -266,10 +315,7 @@ def status():
 # ====================== 路由：下载结果zip ======================
 @app.route("/download")
 def download():
-    """
-    把 output/YYYY-MM/ 打包成 zip 提供浏览器下载
-    本地 output 文件永久保留作为备份
-    """
+    """把 output/YYYY-MM/ 打包成 zip 提供浏览器下载，本地文件永久保留"""
     process_month = get_process_month()
     output_folder = os.path.join("output", process_month)
 
