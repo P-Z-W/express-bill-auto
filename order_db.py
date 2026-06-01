@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-数据库订单下载模块（V2.1 稳定版）
+数据库订单下载模块（V2.4 稳定版）
 ==================================================
 【框架说明】
   功能：从阿里云MySQL下载订单数据
-       → 读取外部SQL语句
+       → 读取外部SQL语句（动态日期范围）
        → 导出Excel并高速美化
        → 保存到 output/YYYY-MM/毅播快递数据_YYYYMM.xlsx
-  结构：配置 → 工具 → 数据库连接 → 查询 → 导出美化
 
-【V2.1 变更】
-  - 输出路径跟随 settings.OUTPUT_FOLDER（含月份子目录）
-  - 其余逻辑完全保留原V1.4框架
+【V2.4 架构整理】
+  - 删除重复的 ensure_folder / get_last_month_str 函数
+  - 改从 utils 导入统一工具函数和样式常量
+  - 业务逻辑完全不变
 
 【可独立运行】
 ==================================================
@@ -19,30 +19,18 @@
 import pymysql
 import pandas as pd
 import os
-from datetime import datetime, timedelta
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
-# 【仅修改这一行】
 from config import settings
+from utils import ensure_folder, get_last_month_str, FULL_BORDER, HEADER_FONT, CENTER_ALIGN
 
 # ====================== 配置（从settings读取）======================
 DB_CONFIG         = settings.DB_CONFIG
-OUTPUT_FOLDER     = settings.OUTPUT_FOLDER      # 已含月份子目录：output/YYYY-MM
+OUTPUT_FOLDER     = settings.OUTPUT_FOLDER
 SQL_FILE_PATH     = settings.SQL_FILE_PATH
 ORDER_FILE_PREFIX = settings.ORDER_FILE_PREFIX
 
-# ====================== 工具函数 ======================
-def ensure_folder(folder_path):
-    """确保文件夹存在"""
-    os.makedirs(folder_path, exist_ok=True)
-
-def get_last_month_str():
-    """获取上个月：YYYYMM格式"""
-    today = datetime.now()
-    first_day_this_month = datetime(today.year, today.month, 1)
-    last_day_last_month  = first_day_this_month - timedelta(days=1)
-    return last_day_last_month.strftime("%Y%m")
 
 # ====================== 数据库操作 ======================
 def connect_db():
@@ -55,17 +43,16 @@ def connect_db():
         print(f"❌ 数据库连接失败：{str(e)}")
         return None
 
+
 def load_sql_from_config():
     """
     从 config/SQL-config.txt 读取SQL模板
-    并自动将 {START_DATE} / {END_DATE} 替换为本次处理月份的动态日期范围
-    业务逻辑：日期范围由 settings.py 自动计算，无需手动修改 SQL 文件
+    自动将 {START_DATE} / {END_DATE} 替换为本次处理月份的动态日期范围
     """
     try:
         with open(SQL_FILE_PATH, "r", encoding="utf-8") as f:
             sql = f.read().strip()
 
-        # 注入动态日期范围
         sql = sql.replace("{START_DATE}", settings.SQL_START_DATE)
         sql = sql.replace("{END_DATE}",   settings.SQL_END_DATE)
 
@@ -76,21 +63,22 @@ def load_sql_from_config():
         print(f"❌ 读取SQL文件失败：{str(e)}")
         return None
 
+
 def query_database(conn, sql):
     """执行SQL并返回DataFrame"""
     df = pd.read_sql(sql, conn)
     print(f"📊 查询完成，获取数据行数：{len(df)}")
     return df
 
+
 # ====================== 导出并高速美化 ======================
 def export_and_pretty(df):
     """导出Excel + 轻量高速美化"""
     ensure_folder(OUTPUT_FOLDER)
-    month_str = get_last_month_str()
+    month_str = get_last_month_str()          # 从utils统一获取，格式YYYYMM
     filename  = f"{ORDER_FILE_PREFIX}{month_str}.xlsx"
     save_path = os.path.join(OUTPUT_FOLDER, filename)
 
-    # 快速导出
     with pd.ExcelWriter(save_path, engine="openpyxl", mode="w") as writer:
         df.to_excel(writer, index=False)
 
@@ -99,23 +87,20 @@ def export_and_pretty(df):
     max_row = ws.max_row
     max_col = ws.max_column
 
-    # 样式定义
-    thin         = Side(style="thin")
-    border       = Border(left=thin, right=thin, top=thin, bottom=thin)
-    header_font  = Font(bold=True)
-    center_align = Alignment(horizontal="center", vertical="center")
-
-    # 全表边框
+    # 全表边框（使用utils统一样式）
     last_col   = chr(ord('A') + max_col - 1)
     data_range = f"A1:{last_col}{max_row}"
     for row in ws[data_range]:
         for cell in row:
-            cell.border = border
+            cell.border = FULL_BORDER
 
-    # 表头样式
+    # 表头样式（使用utils统一样式）
     for cell in ws[1]:
-        cell.font      = header_font
-        cell.alignment = center_align
+        cell.font      = HEADER_FONT
+        cell.fill      = __import__('openpyxl').styles.PatternFill(
+            start_color="4472C4", end_color="4472C4", fill_type="solid"
+        )
+        cell.alignment = CENTER_ALIGN
 
     # 日期列宽度与格式
     if max_col >= 2:
@@ -136,12 +121,13 @@ def export_and_pretty(df):
                 max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = min(max_len + 2, 25)
 
-    # 【关键】快递类型列宽度放最后，避免被自适应覆盖
+    # 快递类型列宽度放最后，避免被自适应覆盖
     ws.column_dimensions['F'].width = 16
 
     wb.save(save_path)
     print(f"💾 导出并美化完成：{filename}")
     return save_path
+
 
 # ====================== 主流程 ======================
 def run_download_orders():
@@ -173,6 +159,6 @@ def run_download_orders():
             conn.close()
             print("🔌 数据库连接已关闭")
 
-# 独立运行入口
+
 if __name__ == "__main__":
     run_download_orders()
