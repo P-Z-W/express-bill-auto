@@ -189,13 +189,21 @@ def run_task(data_folder, output_folder, process_month):
         push_log("📦 可点击下方按钮下载结果文件")
 
         success     = True
-        task_result = {"success": True, "output_folder": output_folder}
+        elapsed     = datetime.now() - start_time
+        minutes     = int(elapsed.total_seconds() // 60)
+        seconds     = int(elapsed.total_seconds() % 60)
+        elapsed_str = f"{minutes}分{seconds}秒"
+        task_result = {"success": True, "output_folder": output_folder, "elapsed": elapsed_str}
 
     except Exception as e:
         import traceback
         push_log(f"\n❌ 程序运行异常：{str(e)}")
         push_log(traceback.format_exc())
-        task_result = {"success": False, "output_folder": output_folder}
+        elapsed     = datetime.now() - start_time
+        minutes     = int(elapsed.total_seconds() // 60)
+        seconds     = int(elapsed.total_seconds() % 60)
+        elapsed_str = f"{minutes}分{seconds}秒"
+        task_result = {"success": False, "output_folder": output_folder, "elapsed": elapsed_str}
 
     finally:
         write_log_footer(log_file, success, start_time)
@@ -418,41 +426,127 @@ def history():
 
 
 
-# ====================== 路由：统计数据 ======================
+# ====================== 路由：未匹配运单分析 ======================
+@app.route("/unmatched/<month>")
+def unmatched(month):
+    """
+    读取指定月份最终对账结果.xlsx
+    统计未匹配运单数量、各快递类型分布、占比
+    """
+    import pandas as pd
+
+    result_file = os.path.join("output", month, "最终对账结果.xlsx")
+    if not os.path.exists(result_file):
+        return jsonify({"ok": False, "msg": f"{month} 对账结果文件不存在"}), 404
+
+    try:
+        df = pd.read_excel(result_file, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+    total        = len(df)
+    df_unmatched = df[df["所属团队"] == "未匹配"] if "所属团队" in df.columns else df
+    unmatched_count = len(df_unmatched)
+    matched_count   = total - unmatched_count
+    ratio           = round(unmatched_count / total * 100, 1) if total > 0 else 0
+
+    # 按快递类型统计未匹配
+    by_express = {}
+    if "快递类型" in df_unmatched.columns:
+        for express_type, group in df_unmatched.groupby("快递类型"):
+            by_express[str(express_type)] = len(group)
+
+    # 未匹配运单号样本（前5条，方便排查）
+    samples = []
+    if "运单号" in df_unmatched.columns:
+        samples = df_unmatched["运单号"].astype(str).head(5).tolist()
+
+    return jsonify({
+        "ok":            True,
+        "month":         month,
+        "total":         total,
+        "matched":       matched_count,
+        "unmatched":     unmatched_count,
+        "ratio":         ratio,
+        "by_express":    by_express,
+        "samples":       samples
+    })
+
+
+# ====================== 路由：统计数据（含团队汇总）======================
 @app.route("/stats/<month>")
 def stats(month):
     """
     读取指定月份 output/YYYY-MM/最终对账结果.xlsx
-    按团队分组求和，返回统计数据供图表渲染
-    同时扫描所有月份，返回趋势数据
+    返回：各团队费用统计、各月趋势、团队汇总表数据
     """
     import pandas as pd
 
     output_base = "output"
     result      = {
-        "month":        month,
-        "team_stats":   [],   # 本月各团队费用
-        "monthly_trend": []   # 各月总费用趋势
+        "month":         month,
+        "team_stats":    [],
+        "monthly_trend": [],
+        "team_summary":  []   # 新增：团队汇总表数据
     }
 
-    # ---- 本月各团队费用 ----
     result_file = os.path.join(output_base, month, "最终对账结果.xlsx")
     if os.path.exists(result_file):
         try:
             df = pd.read_excel(result_file, engine="openpyxl")
+            df = df[df["所属团队"] != "未匹配"] if "所属团队" in df.columns else df
+
             if "所属团队" in df.columns and "单票应付金额" in df.columns:
                 df["单票应付金额"] = pd.to_numeric(df["单票应付金额"], errors="coerce").fillna(0)
-                team_group = df.groupby("所属团队")["单票应付金额"].sum().reset_index()
-                team_group = team_group[team_group["单票应付金额"] > 0]
-                team_group = team_group.sort_values("单票应付金额", ascending=False)
+
+                # 图表数据：各团队费用
+                # 按订单数量统计所有有效团队，不因金额为0排除（全国均重团队金额为空但有订单）
+                team_group = df.groupby("所属团队").agg(
+                    amount=("单票应付金额", "sum"),
+                    count=("运单号", "count")
+                ).reset_index()
+                team_group = team_group[team_group["count"] > 0]  # 有订单就显示
+                team_group = team_group.sort_values("amount", ascending=False)
                 result["team_stats"] = [
-                    {"team": row["所属团队"], "amount": round(float(row["单票应付金额"]), 2)}
+                    {"team": row["所属团队"], "amount": round(float(row["amount"]), 2)}
                     for _, row in team_group.iterrows()
                 ]
+
+                # 团队汇总表：单票费用 + 均重订单数 + 合计
+                summary = []
+                total_single  = 0.0
+                total_average = 0
+                total_amount  = 0.0
+
+                for team, group in df.groupby("所属团队"):
+                    single_amount  = round(float(group[group["实际计算方式"] == "单票"]["单票应付金额"].sum()), 2) if "实际计算方式" in group.columns else 0
+                    average_count  = len(group[group["实际计算方式"] == "全国均重"]) if "实际计算方式" in group.columns else 0
+                    team_amount    = round(float(group["单票应付金额"].sum()), 2)
+
+                    total_single  += single_amount
+                    total_average += average_count
+                    total_amount  += team_amount
+
+                    summary.append({
+                        "team":           team,
+                        "single_amount":  single_amount,
+                        "average_count":  average_count,
+                        "total_amount":   team_amount
+                    })
+
+                summary.sort(key=lambda x: x["total_amount"], reverse=True)
+                summary.append({
+                    "team":          "合计",
+                    "single_amount": round(total_single, 2),
+                    "average_count": total_average,
+                    "total_amount":  round(total_amount, 2)
+                })
+                result["team_summary"] = summary
+
         except Exception as e:
             print(f"读取统计数据失败：{str(e)}")
 
-    # ---- 各月总费用趋势 ----
+    # 各月总费用趋势
     monthly = []
     if os.path.exists(output_base):
         for folder in sorted(os.listdir(output_base)):
@@ -475,6 +569,7 @@ def stats(month):
     result["monthly_trend"] = monthly
 
     return jsonify(result)
+
 
 
 

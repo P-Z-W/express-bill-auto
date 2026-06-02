@@ -279,6 +279,7 @@
     <button class="nav-btn" onclick="navTo('#main-section')">🏠 主页</button>
     <button class="nav-btn" onclick="navTo('#history-section')">📋 历史</button>
     <button class="nav-btn" onclick="navTo('#stats-section')">📊 统计</button>
+    <button class="nav-btn" onclick="navTo('#unmatched-section')">⚠️ 未匹配</button>
     <button class="nav-btn" onclick="navTo('#preview-section')">📋 预览</button>
     <button class="nav-btn" onclick="navTo('#price-section')">💰 价格配置</button>
   </div>
@@ -360,6 +361,16 @@
     <div class="card">
       <div class="card-title" id="stats-title">数据统计报表</div>
       <div id="stats-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">点击历史记录中的「📊 统计」按钮查看图表</div></div>
+    </div>
+  </div>
+
+  <!-- 未匹配运单分析 -->
+  <div id="unmatched-section" style="max-width:1100px; margin-top:20px;">
+    <div class="card">
+      <div class="card-title" id="unmatched-title">未匹配运单分析</div>
+      <div id="unmatched-area">
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">点击「📊 统计」按钮后自动加载</div>
+      </div>
     </div>
   </div>
 
@@ -570,11 +581,13 @@
     btn.disabled    = false;
     btn.textContent = '▶ 再次运行';
     fetch('/status').then(r => r.json()).then(data => {
+      const elapsed = (data.result && data.result.elapsed) ? data.result.elapsed : '';
       if (data.result && data.result.success) {
-        setStatus('done', '运行完成 ✅');
+        setStatus('done', elapsed ? `运行完成 ✅  耗时：${elapsed}` : '运行完成 ✅');
         dlBtn.classList.add('show');
         updateProgress(4);
         document.getElementById('progress-fill').classList.add('done');
+        document.getElementById('elapsed-text').textContent = elapsed ? `⏱ 本次耗时：${elapsed}` : '';
       } else {
         setStatus('error', '运行异常，请查看 run.log');
         document.getElementById('progress-fill').classList.add('error');
@@ -641,13 +654,47 @@
         document.getElementById('stats-area').innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">${month} 暂无统计数据</div>`;
         return;
       }
+      // 先构建汇总表HTML
+      let summaryHtml = '';
+      if (data.team_summary && data.team_summary.length > 0) {
+        const summaryRows = data.team_summary.map(r => {
+          const isTotal  = r.team === '合计';
+          const style    = isTotal ? 'font-weight:500;border-top:1px solid var(--border);' : '';
+          const teamCell = isTotal
+            ? `<td style="${style}color:var(--text)">合计</td>`
+            : `<td style="${style}color:var(--muted)">${r.team}</td>`;
+          return `<tr>
+            ${teamCell}
+            <td style="${style}text-align:right;color:var(--accent2)">${r.single_amount > 0 ? r.single_amount.toFixed(2) : '—'}</td>
+            <td style="${style}text-align:right;color:var(--muted)">${r.average_count > 0 ? r.average_count+'单' : '—'}</td>
+            <td style="${style}text-align:right;color:var(--text);font-weight:${isTotal?'500':'400'}">${r.total_amount > 0 ? r.total_amount.toFixed(2) : '—'}</td>
+          </tr>`;
+        }).join('');
+        summaryHtml = `
+          <div style="margin-top:20px;">
+            <div class="chart-title">📋 团队费用汇总表</div>
+            <table class="preview-table">
+              <thead><tr>
+                <th>团队</th>
+                <th style="text-align:right">单票费用（元）</th>
+                <th style="text-align:right">均重订单数</th>
+                <th style="text-align:right">合计（元）</th>
+              </tr></thead>
+              <tbody>${summaryRows}</tbody>
+            </table>
+          </div>`;
+      }
+
+      // 一次性写入所有内容，避免innerHTML+=破坏canvas
       document.getElementById('stats-area').innerHTML = `
         <div class="charts-grid">
           <div class="chart-box chart-full"><div class="chart-title">📈 各月总费用趋势</div><canvas id="chart-line" height="80"></canvas></div>
           <div class="chart-box"><div class="chart-title">🥧 ${month} 各团队费用占比</div><canvas id="chart-pie"></canvas></div>
           <div class="chart-box"><div class="chart-title">📊 ${month} 各团队费用明细</div><canvas id="chart-bar"></canvas></div>
-        </div>`;
+        </div>
+        ${summaryHtml}`;
 
+      // DOM写入后再渲染图表
       const colors = ['#4f8ef7','#3dd68c','#f7954f','#f75f5f','#a78bfa','#34d399','#fb923c','#60a5fa','#f472b6','#facc15','#4ade80','#38bdf8'];
       const teams   = data.team_stats.map(t => t.team);
       const amounts = data.team_stats.map(t => t.amount);
@@ -674,9 +721,72 @@
         options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ color:'#6b7099', maxRotation:30 }, grid:{ color:'#2a2d3a' } }, y:{ ticks:{ color:'#6b7099' }, grid:{ color:'#2a2d3a' } } } }
       });
 
+      // E. 加载未匹配运单分析
+      loadUnmatched(month);
+
       document.getElementById('stats-section').scrollIntoView({ behavior:'smooth' });
     } catch(e) {
       document.getElementById('stats-area').innerHTML = '<div style="color:var(--danger);font-size:13px;padding:12px;">统计数据加载失败</div>';
+    }
+  }
+
+  // E. 未匹配运单分析
+  async function loadUnmatched(month) {
+    const section = document.getElementById('unmatched-section');
+    if (!section) return;
+    document.getElementById('unmatched-title').textContent = `未匹配运单分析 — ${month}`;
+    document.getElementById('unmatched-area').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px;">加载中...</div>';
+
+    try {
+      const res  = await fetch(`/unmatched/${month}`);
+      const data = await res.json();
+      if (!data.ok) {
+        document.getElementById('unmatched-area').innerHTML = `<div style="color:var(--danger);padding:12px;">${data.msg}</div>`;
+        return;
+      }
+
+      const byExpressHtml = Object.entries(data.by_express).map(([type, count]) =>
+        `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--border);">
+          <span style="color:var(--muted)">${type}</span>
+          <span style="font-family:var(--mono)">${count.toLocaleString()} 条</span>
+        </div>`
+      ).join('');
+
+      const samplesHtml = data.samples.length > 0
+        ? `<div style="margin-top:12px;font-size:12px;color:var(--muted)">
+            未匹配运单号样本：
+            <span style="font-family:var(--mono);color:var(--text)">${data.samples.join('、')}</span>
+           </div>`
+        : '';
+
+      document.getElementById('unmatched-area').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div style="background:#0a0c12;border-radius:8px;padding:16px;text-align:center;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">未匹配总数</div>
+            <div style="font-size:22px;font-weight:600;color:var(--danger);font-family:var(--mono)">${data.unmatched.toLocaleString()}</div>
+          </div>
+          <div style="background:#0a0c12;border-radius:8px;padding:16px;text-align:center;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">占总运单比例</div>
+            <div style="font-size:22px;font-weight:600;color:var(--warn);font-family:var(--mono)">${data.ratio}%</div>
+          </div>
+          <div style="background:#0a0c12;border-radius:8px;padding:16px;text-align:center;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">已匹配</div>
+            <div style="font-size:22px;font-weight:600;color:var(--accent2);font-family:var(--mono)">${data.matched.toLocaleString()}</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">按快递类型分布：</div>
+        ${byExpressHtml}
+        ${samplesHtml}
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(247,149,79,0.08);border-radius:6px;border-left:3px solid var(--warn);">
+          <div style="font-size:12px;color:var(--warn);font-weight:500;margin-bottom:4px;">可能原因</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+            · 运单号在数据库订单中不存在（快递账单包含非本店订单）<br>
+            · SQL查询时间范围未覆盖该运单（可调整 settings.py 中的扩展天数）<br>
+            · 运单号格式不一致（空格、小数点等问题）
+          </div>
+        </div>`;
+    } catch(e) {
+      document.getElementById('unmatched-area').innerHTML = '<div style="color:var(--danger);padding:12px;">加载失败</div>';
     }
   }
 
