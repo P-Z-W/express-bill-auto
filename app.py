@@ -148,6 +148,7 @@ def run_task(data_folder, output_folder, process_month):
         push_log(f"📂 数据目录：{data_folder}")
         push_log(f"📂 输出目录：{output_folder}")
         push_log("=" * 60)
+        push_log("__STEP__0")  # 通知前端：开始运行
 
         # ---------- 第一步：数据库下载订单 ----------
         push_log(f"\n📌 第一步：从数据库下载 {process_month} 订单数据")
@@ -155,8 +156,10 @@ def run_task(data_folder, output_folder, process_month):
         order_df = order_db.run_download_orders()
         if order_df is None or order_df.empty:
             push_log("❌ 订单数据下载失败或为空，终止流程")
+            push_log("__STEP_FAIL__1")
             task_result = {"success": False, "output_folder": output_folder}
             return
+        push_log("__STEP__1")  # 通知前端：第一步完成 25%
 
         # ---------- 第二步：合并快递账单 ----------
         push_log(f"\n📌 第二步：清洗合并 {process_month} 快递账单")
@@ -164,18 +167,22 @@ def run_task(data_folder, output_folder, process_month):
         express_df = merge_express.run_merge_process()
         if express_df is None or express_df.empty:
             push_log("❌ 快递账单合并失败或为空，终止流程")
+            push_log("__STEP_FAIL__2")
             task_result = {"success": False, "output_folder": output_folder}
             return
+        push_log("__STEP__2")  # 通知前端：第二步完成 50%
 
         # ---------- 第三步：运单匹配对账 ----------
         push_log(f"\n📌 第三步：运单号匹配对账（{process_month}）")
         import order_matching
         order_matching.run_reconciliation()
+        push_log("__STEP__3")  # 通知前端：第三步完成 75%
 
         # ---------- 第四步：按团队拆分账单 ----------
         push_log(f"\n📌 第四步：按团队拆分客户账单（{process_month}）")
         import split_bill_by_team
         split_bill_by_team.main()
+        push_log("__STEP__4")  # 通知前端：第四步完成 100%
 
         push_log("\n" + "=" * 60)
         push_log(f"🎉 {process_month} 全部流程执行完成！")
@@ -408,6 +415,186 @@ def history():
 
     return jsonify(records)
 
+
+
+
+# ====================== 路由：统计数据 ======================
+@app.route("/stats/<month>")
+def stats(month):
+    """
+    读取指定月份 output/YYYY-MM/最终对账结果.xlsx
+    按团队分组求和，返回统计数据供图表渲染
+    同时扫描所有月份，返回趋势数据
+    """
+    import pandas as pd
+
+    output_base = "output"
+    result      = {
+        "month":        month,
+        "team_stats":   [],   # 本月各团队费用
+        "monthly_trend": []   # 各月总费用趋势
+    }
+
+    # ---- 本月各团队费用 ----
+    result_file = os.path.join(output_base, month, "最终对账结果.xlsx")
+    if os.path.exists(result_file):
+        try:
+            df = pd.read_excel(result_file, engine="openpyxl")
+            if "所属团队" in df.columns and "单票应付金额" in df.columns:
+                df["单票应付金额"] = pd.to_numeric(df["单票应付金额"], errors="coerce").fillna(0)
+                team_group = df.groupby("所属团队")["单票应付金额"].sum().reset_index()
+                team_group = team_group[team_group["单票应付金额"] > 0]
+                team_group = team_group.sort_values("单票应付金额", ascending=False)
+                result["team_stats"] = [
+                    {"team": row["所属团队"], "amount": round(float(row["单票应付金额"]), 2)}
+                    for _, row in team_group.iterrows()
+                ]
+        except Exception as e:
+            print(f"读取统计数据失败：{str(e)}")
+
+    # ---- 各月总费用趋势 ----
+    monthly = []
+    if os.path.exists(output_base):
+        for folder in sorted(os.listdir(output_base)):
+            folder_path = os.path.join(output_base, folder)
+            if not os.path.isdir(folder_path):
+                continue
+            if len(folder) != 7 or folder[4] != "-":
+                continue
+            f = os.path.join(folder_path, "最终对账结果.xlsx")
+            if not os.path.exists(f):
+                continue
+            try:
+                df_m = pd.read_excel(f, engine="openpyxl")
+                if "单票应付金额" in df_m.columns:
+                    df_m["单票应付金额"] = pd.to_numeric(df_m["单票应付金额"], errors="coerce").fillna(0)
+                    total = round(float(df_m["单票应付金额"].sum()), 2)
+                    monthly.append({"month": folder, "total": total})
+            except Exception:
+                continue
+    result["monthly_trend"] = monthly
+
+    return jsonify(result)
+
+
+
+# ====================== 路由：读取价格配置 ======================
+@app.route("/price/get")
+def price_get():
+    """
+    读取 config/price_config.xlsx 三个Sheet
+    返回申通报价、中通报价、充单价格供前端渲染表格
+    """
+    import pandas as pd
+
+    price_file = os.path.join("config", "price_config.xlsx")
+    if not os.path.exists(price_file):
+        return jsonify({"ok": False, "msg": "price_config.xlsx 不存在"}), 404
+
+    result = {"ok": True, "shentong": [], "zhongtong": [], "charge": []}
+
+    try:
+        # 读取申通报价
+        df_st = pd.read_excel(price_file, sheet_name="申通报价", engine="openpyxl")
+        for _, row in df_st.iterrows():
+            if pd.isna(row.iloc[0]) or str(row.iloc[0]).strip() == "":
+                continue
+            result["shentong"].append({
+                "province":   str(row.iloc[0]).strip(),
+                "fee_3kg":    float(row.iloc[1]) if pd.notna(row.iloc[1]) else 0,
+                "fee_over3kg": float(row.iloc[3]) if pd.notna(row.iloc[3]) else 0,
+                "unit_price": float(row.iloc[4]) if pd.notna(row.iloc[4]) else 0,
+            })
+
+        # 读取中通报价
+        df_zt = pd.read_excel(price_file, sheet_name="中通报价", engine="openpyxl")
+        for _, row in df_zt.iterrows():
+            if pd.isna(row.iloc[0]) or str(row.iloc[0]).strip() == "":
+                continue
+            result["zhongtong"].append({
+                "province":    str(row.iloc[0]).strip(),
+                "fee_3kg":     float(row.iloc[1]) if pd.notna(row.iloc[1]) else 0,
+                "fee_over3kg": float(row.iloc[3]) if pd.notna(row.iloc[3]) else 0,
+                "unit_price":  float(row.iloc[4]) if pd.notna(row.iloc[4]) else 0,
+            })
+
+        # 读取充单价格
+        df_charge = pd.read_excel(price_file, sheet_name="客户快递加收单价信息记录", engine="openpyxl")
+        for _, row in df_charge.iterrows():
+            if pd.isna(row.iloc[10]) or pd.isna(row.iloc[11]):
+                continue
+            type_name = str(row.iloc[10]).strip()
+            if type_name in ["申通", "中通"]:
+                result["charge"].append({
+                    "type":   type_name,
+                    "price":  float(row.iloc[11])
+                })
+
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+    return jsonify(result)
+
+
+# ====================== 路由：保存价格配置 ======================
+@app.route("/price/save", methods=["POST"])
+def price_save():
+    """
+    接收前端修改后的报价数据，更新 price_config.xlsx 对应Sheet
+    只更新B/D/E列（3kg内面单、超3kg面单、续重单价）和充单价格
+    不改变Excel的其他格式和内容
+    """
+    import pandas as pd
+    from openpyxl import load_workbook
+
+    data       = request.json
+    price_file = os.path.join("config", "price_config.xlsx")
+
+    if not os.path.exists(price_file):
+        return jsonify({"ok": False, "msg": "price_config.xlsx 不存在"}), 404
+
+    try:
+        wb = load_workbook(price_file)
+
+        # 更新申通报价
+        if "shentong" in data and "申通报价" in wb.sheetnames:
+            ws = wb["申通报价"]
+            province_map = {str(row[0].value).strip(): row for row in ws.iter_rows(min_row=2) if row[0].value}
+            for item in data["shentong"]:
+                prov = item["province"]
+                if prov in province_map:
+                    row = province_map[prov]
+                    row[1].value = item["fee_3kg"]      # B列
+                    row[3].value = item["fee_over3kg"]  # D列
+                    row[4].value = item["unit_price"]   # E列
+
+        # 更新中通报价
+        if "zhongtong" in data and "中通报价" in wb.sheetnames:
+            ws = wb["中通报价"]
+            province_map = {str(row[0].value).strip(): row for row in ws.iter_rows(min_row=2) if row[0].value}
+            for item in data["zhongtong"]:
+                prov = item["province"]
+                if prov in province_map:
+                    row = province_map[prov]
+                    row[1].value = item["fee_3kg"]
+                    row[3].value = item["fee_over3kg"]
+                    row[4].value = item["unit_price"]
+
+        # 更新充单价格
+        if "charge" in data and "客户快递加收单价信息记录" in wb.sheetnames:
+            ws = wb["客户快递加收单价信息记录"]
+            for row in ws.iter_rows(min_row=2):
+                if row[10].value and str(row[10].value).strip() in ["申通", "中通"]:
+                    type_name = str(row[10].value).strip()
+                    for item in data["charge"]:
+                        if item["type"] == type_name:
+                            row[11].value = item["price"]
+
+        wb.save(price_file)
+        return jsonify({"ok": True, "msg": "价格配置已保存"})
+
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 # ====================== 启动 ======================
 if __name__ == "__main__":
