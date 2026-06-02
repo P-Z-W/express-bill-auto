@@ -596,6 +596,91 @@ def price_save():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
 
+
+
+# ====================== 路由：对账结果预览 ======================
+@app.route("/preview/<month>")
+def preview(month):
+    """
+    读取指定月份最终对账结果.xlsx
+    支持分页、筛选、搜索
+    参数：
+      page     第几页，从1开始，默认1
+      size     每页条数，默认100
+      filter   筛选：all/matched/unmatched/single/average
+      keyword  搜索关键词（运单号或团队名）
+    """
+    import pandas as pd
+
+    result_file = os.path.join("output", month, "最终对账结果.xlsx")
+    if not os.path.exists(result_file):
+        return jsonify({"ok": False, "msg": f"{month} 对账结果文件不存在"}), 404
+
+    try:
+        df = pd.read_excel(result_file, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+    # 统一列名，防止列名不一致
+    df = df.fillna("")
+
+    # 获取参数
+    page    = int(request.args.get("page",    1))
+    size    = int(request.args.get("size",    100))
+    filter_ = request.args.get("filter",  "all")
+    keyword = request.args.get("keyword", "").strip()
+
+    # 统计原始数据
+    total_count     = len(df)
+    matched_count   = len(df[df["所属团队"] != "未匹配"]) if "所属团队" in df.columns else 0
+    unmatched_count = total_count - matched_count
+
+    # 筛选
+    if "所属团队" in df.columns and "实际计算方式" in df.columns:
+        if filter_ == "matched":
+            df = df[df["所属团队"] != "未匹配"]
+        elif filter_ == "unmatched":
+            df = df[df["所属团队"] == "未匹配"]
+        elif filter_ == "single":
+            df = df[df["实际计算方式"] == "单票"]
+        elif filter_ == "average":
+            df = df[df["实际计算方式"] == "全国均重"]
+
+    # 搜索
+    if keyword:
+        mask = pd.Series([False] * len(df), index=df.index)
+        for col in ["运单号", "所属团队"]:
+            if col in df.columns:
+                mask = mask | df[col].astype(str).str.contains(keyword, na=False)
+        df = df[mask]
+
+    filtered_count = len(df)
+
+    # 分页
+    start = (page - 1) * size
+    end   = start + size
+    page_df = df.iloc[start:end]
+
+    # 只返回需要的列
+    show_cols = ["运单号", "所属团队", "目的省份", "结算重量", "快递类型", "实际计算方式", "单票应付金额"]
+    show_cols = [c for c in show_cols if c in page_df.columns]
+    page_df   = page_df[show_cols]
+
+    rows = page_df.to_dict(orient="records")
+
+    return jsonify({
+        "ok":             True,
+        "month":          month,
+        "total":          total_count,
+        "matched":        matched_count,
+        "unmatched":      unmatched_count,
+        "filtered":       filtered_count,
+        "page":           page,
+        "size":           size,
+        "total_pages":    max(1, -(-filtered_count // size)),
+        "rows":           rows
+    })
+
 # ====================== 启动 ======================
 if __name__ == "__main__":
     print("=" * 60)
