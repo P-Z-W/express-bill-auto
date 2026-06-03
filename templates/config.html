@@ -3,36 +3,53 @@
 
 {% block extra_head %}
 <style>
-  .config-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-  .tab-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:0; }
+  .tab-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); }
   .tab-btn { font-size:13px; padding:8px 16px; border:none; background:none; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.2s; }
   .tab-btn:hover { color:var(--text); }
   .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
   .tab-content { display:none; }
   .tab-content.active { display:block; }
 
+  /* 价格表 */
   .price-table { width:100%; border-collapse:collapse; font-size:13px; }
   .price-table th { background:var(--bg); color:var(--muted); font-size:12px; padding:8px 12px; text-align:left; border-bottom:0.5px solid var(--border); font-weight:500; }
-  .price-table td { padding:6px 8px; border-bottom:0.5px solid var(--border); }
+  .price-table td { padding:5px 8px; border-bottom:0.5px solid var(--border); }
   .price-input { width:90px; padding:4px 8px; font-size:12px; font-family:var(--mono); background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; text-align:right; }
   .price-input:focus { outline:none; border-color:var(--accent); }
+  .prov-input { width:120px; padding:4px 8px; font-size:12px; font-family:var(--mono); background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; }
+  .prov-input:focus { outline:none; border-color:var(--accent); }
+  .del-btn { padding:3px 8px; font-size:11px; border-radius:4px; border:1px solid var(--border); background:transparent; color:var(--danger); cursor:pointer; }
+  .del-btn:hover { background:rgba(247,95,95,0.08); }
+  .add-row-btn { margin-top:10px; font-size:12px; padding:6px 14px; border-radius:6px; border:1px dashed var(--border); background:transparent; color:var(--muted); cursor:pointer; transition:all 0.2s; }
+  .add-row-btn:hover { border-color:var(--accent2); color:var(--accent2); }
 
+  /* 快递管理 */
   .express-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:0.5px solid var(--border); }
   .express-item:last-child { border-bottom:none; }
   .express-name { font-size:14px; font-weight:500; flex:1; }
   .express-col  { font-size:12px; color:var(--muted); flex:1; font-family:var(--mono); }
-  .toggle-btn {
-    width:44px; height:24px; border-radius:12px; border:none; cursor:pointer;
-    background:var(--border); position:relative; transition:background 0.3s;
-  }
+  .toggle-btn { width:44px; height:24px; border-radius:12px; border:none; cursor:pointer; background:var(--border); position:relative; transition:background 0.3s; }
   .toggle-btn.on { background:var(--accent2); }
   .toggle-btn::after { content:''; position:absolute; width:18px; height:18px; background:#fff; border-radius:50%; top:3px; left:3px; transition:left 0.3s; }
   .toggle-btn.on::after { left:23px; }
 
-  .save-bar { display:flex; align-items:center; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
-  .save-msg { font-size:12px; font-family:var(--mono); }
+  /* 充单价格 */
   .charge-row { display:flex; align-items:center; gap:16px; margin-bottom:12px; font-size:13px; }
   .charge-label { color:var(--muted); width:60px; }
+
+  /* 通用保存栏 */
+  .save-bar { display:flex; align-items:center; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+  .save-msg { font-size:12px; font-family:var(--mono); }
+
+  /* 运行参数 */
+  .form-group { margin-bottom:16px; }
+  .form-label { font-size:12px; color:var(--muted); margin-bottom:6px; display:block; }
+  .form-input { width:100%; max-width:380px; padding:8px 12px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; font-size:13px; font-family:var(--mono); }
+  .form-input:focus { outline:none; border-color:var(--accent); }
+  .form-input-sm { width:100px; }
+  .form-row { display:flex; gap:16px; flex-wrap:wrap; }
+  .info-box { background:rgba(79,142,247,0.06); border:1px solid rgba(79,142,247,0.2); border-radius:8px; padding:14px 16px; margin-bottom:16px; font-size:12px; color:var(--muted); line-height:1.8; }
+  .info-box span { color:var(--accent); font-family:var(--mono); }
 </style>
 {% endblock %}
 
@@ -45,6 +62,7 @@
     <button class="tab-btn" onclick="switchTab('st')">申通报价</button>
     <button class="tab-btn" onclick="switchTab('zt')">中通报价</button>
     <button class="tab-btn" onclick="switchTab('charge')">充单价格</button>
+    <button class="tab-btn" onclick="switchTab('run-params')">⏱ 运行参数</button>
   </div>
 
   <!-- 快递管理 -->
@@ -59,16 +77,21 @@
 
   <!-- 申通报价 -->
   <div class="tab-content" id="tab-st">
+    <div class="card-title">申通报价表</div>
     <div id="price-st-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+    <button class="add-row-btn" onclick="addPriceRow('st')">＋ 新增省份</button>
   </div>
 
   <!-- 中通报价 -->
   <div class="tab-content" id="tab-zt">
+    <div class="card-title">中通报价表</div>
     <div id="price-zt-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+    <button class="add-row-btn" onclick="addPriceRow('zt')">＋ 新增省份</button>
   </div>
 
   <!-- 充单价格 -->
   <div class="tab-content" id="tab-charge">
+    <div class="card-title">充单价格</div>
     <div id="price-charge-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
   </div>
 
@@ -76,6 +99,36 @@
   <div class="save-bar" id="price-save-bar" style="display:none;">
     <button class="btn btn-primary" onclick="savePrice()">💾 保存价格修改</button>
     <span class="save-msg" id="save-msg-price"></span>
+  </div>
+
+  <!-- 运行参数 -->
+  <div class="tab-content" id="tab-run-params">
+    <div class="card-title">SQL 日期范围配置</div>
+    <div class="info-box" id="run-params-info">
+      当前处理月份：<span id="rp-process-month">—</span>，
+      实际捞取范围：<span id="rp-start">—</span> ~ <span id="rp-end">—</span><br>
+      调整扩展天数可覆盖月底月初的跨月运单，保存后下次运行生效。
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">往前扩展天数（处理月1号往前推 N 天）</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input class="form-input form-input-sm" id="rp-before" type="number" min="0" max="60" placeholder="15">
+          <span style="font-size:13px;color:var(--muted)">天</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">往后扩展天数（处理月最后一天往后推 N 天）</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input class="form-input form-input-sm" id="rp-after" type="number" min="0" max="60" placeholder="5">
+          <span style="font-size:13px;color:var(--muted)">天</span>
+        </div>
+      </div>
+    </div>
+    <div class="save-bar">
+      <button class="btn btn-primary" onclick="saveRunParams()">💾 保存参数</button>
+      <span class="save-msg" id="save-msg-rp"></span>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -85,45 +138,46 @@
 let priceData   = null;
 let expressData = null;
 
+// Tab 切换（支持6个Tab）
+const TAB_KEYS = ['express','st','zt','charge','run-params'];
+const TAB_IDS  = ['tab-express','tab-st','tab-zt','tab-charge','tab-run-params'];
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', ['express','st','zt','charge'][i] === tab);
+    btn.classList.toggle('active', TAB_KEYS[i] === tab);
   });
-  document.querySelectorAll('.tab-content').forEach((el, i) => {
-    el.classList.toggle('active', ['tab-express','tab-st','tab-zt','tab-charge'][i] === `tab-${tab}`);
+  TAB_IDS.forEach((id, i) => {
+    document.getElementById(id).classList.toggle('active', TAB_KEYS[i] === tab);
   });
   const priceSaveBar = document.getElementById('price-save-bar');
-  priceSaveBar.style.display = tab !== 'express' ? 'flex' : 'none';
+  priceSaveBar.style.display = ['st','zt','charge'].includes(tab) ? 'flex' : 'none';
+  if (tab === 'run-params')  loadRunParams();
 }
 
-// ---- 快递配置 ----
+// ====================== 快递配置 ======================
 async function loadExpress() {
   try {
     const res  = await fetch('/express/config');
     const data = await res.json();
     if (!data.ok) return;
     expressData = data.express_list;
-    const html = expressData.map((e, i) => `
+    const html  = expressData.map((e, i) => `
       <div class="express-item">
         <span class="express-name">${e.name}</span>
         <span class="express-col">识别列：${e.identify_column}</span>
         <button class="toggle-btn ${e.enabled ? 'on' : ''}" id="toggle-${i}" onclick="toggleExpress(${i})"></button>
-        <span style="font-size:12px;color:var(--muted)">${e.enabled ? '已启用' : '已禁用'}</span>
+        <span style="font-size:12px;color:var(--muted)" id="toggle-label-${i}">${e.enabled ? '已启用' : '已禁用'}</span>
       </div>`).join('');
     document.getElementById('express-list').innerHTML = html || '<div style="color:var(--muted);padding:12px;">暂无快递配置</div>';
   } catch(e) {
     document.getElementById('express-list').innerHTML = '<div style="color:var(--danger);padding:12px;">加载失败</div>';
   }
 }
-
 function toggleExpress(idx) {
   if (!expressData) return;
   expressData[idx].enabled = !expressData[idx].enabled;
-  const btn = document.getElementById(`toggle-${idx}`);
-  btn.classList.toggle('on', expressData[idx].enabled);
-  btn.nextElementSibling.textContent = expressData[idx].enabled ? '已启用' : '已禁用';
+  document.getElementById(`toggle-${idx}`).classList.toggle('on', expressData[idx].enabled);
+  document.getElementById(`toggle-label-${idx}`).textContent = expressData[idx].enabled ? '已启用' : '已禁用';
 }
-
 async function saveExpress() {
   const msgEl = document.getElementById('save-msg-express');
   msgEl.textContent = '保存中...'; msgEl.style.color = 'var(--muted)';
@@ -136,7 +190,7 @@ async function saveExpress() {
   setTimeout(() => { msgEl.textContent = ''; }, 3000);
 }
 
-// ---- 价格配置 ----
+// ====================== 价格配置 ======================
 async function loadPrice() {
   try {
     const res  = await fetch('/price/get');
@@ -145,58 +199,128 @@ async function loadPrice() {
     priceData = data;
     renderPriceTable('price-st-area',  data.shentong,  'st');
     renderPriceTable('price-zt-area',  data.zhongtong, 'zt');
-    let chargeHtml = data.charge.map(c => `
-      <div class="charge-row">
-        <span class="charge-label">${c.type}</span>
-        <input class="price-input" id="charge-${c.type}" type="number" step="0.01" value="${c.price}">
-        <span style="color:var(--muted);font-size:12px;">元/单</span>
-      </div>`).join('');
-    document.getElementById('price-charge-area').innerHTML = chargeHtml || '<div style="color:var(--muted);padding:12px;">暂无数据</div>';
+    document.getElementById('price-charge-area').innerHTML =
+      data.charge.map(c => `
+        <div class="charge-row">
+          <span class="charge-label">${c.type}</span>
+          <input class="price-input" id="charge-${c.type}" type="number" step="0.01" value="${c.price}">
+          <span style="color:var(--muted);font-size:12px;">元/单</span>
+        </div>`).join('') || '<div style="color:var(--muted);padding:12px;">暂无数据</div>';
   } catch(e) {}
 }
 
 function renderPriceTable(containerId, rows, prefix) {
-  if (!rows || rows.length === 0) { document.getElementById(containerId).innerHTML = '<div style="color:var(--muted);padding:12px;">暂无数据</div>'; return; }
-  const trs = rows.map((r, i) => `
-    <tr>
-      <td style="color:var(--muted);font-size:13px;">${r.province}</td>
-      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_3kg"     type="number" step="0.01" value="${r.fee_3kg}"></td>
-      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_over3kg" type="number" step="0.01" value="${r.fee_over3kg}"></td>
-      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="unit_price"  type="number" step="0.01" value="${r.unit_price}"></td>
-    </tr>`).join('');
+  if (!rows || rows.length === 0) {
+    document.getElementById(containerId).innerHTML = '<div style="color:var(--muted);padding:12px;">暂无数据</div>';
+    return;
+  }
+  const trs = rows.map((r, i) => buildPriceRow(prefix, i, r.province, r.fee_3kg, r.fee_over3kg, r.unit_price)).join('');
   document.getElementById(containerId).innerHTML = `
     <table class="price-table">
-      <thead><tr><th>省份</th><th>3kg内面单费</th><th>超3kg面单费</th><th>续重单价</th></tr></thead>
-      <tbody>${trs}</tbody>
+      <thead><tr><th>省份</th><th>3kg内面单费</th><th>超3kg面单费</th><th>续重单价</th><th></th></tr></thead>
+      <tbody id="tbody-${prefix}">${trs}</tbody>
     </table>`;
+}
+
+function buildPriceRow(prefix, i, province, fee3, feeOver, unit) {
+  return `<tr id="price-row-${prefix}-${i}">
+    <td><input class="prov-input" data-prefix="${prefix}" data-idx="${i}" data-field="province" value="${province}"></td>
+    <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_3kg"     type="number" step="0.01" value="${fee3}"></td>
+    <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_over3kg" type="number" step="0.01" value="${feeOver}"></td>
+    <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="unit_price"  type="number" step="0.01" value="${unit}"></td>
+    <td><button class="del-btn" onclick="delPriceRow('${prefix}',${i})">删除</button></td>
+  </tr>`;
+}
+
+// 新增省份行
+function addPriceRow(prefix) {
+  const tbody = document.getElementById(`tbody-${prefix}`);
+  if (!tbody) return;
+  const newIdx = tbody.querySelectorAll('tr').length;
+  const tr     = document.createElement('tr');
+  tr.id        = `price-row-${prefix}-${newIdx}`;
+  tr.innerHTML = buildPriceRow(prefix, newIdx, '', 0, 0, 0).replace(/<tr[^>]*>/, '').replace(/<\/tr>$/, '');
+  tbody.appendChild(tr);
+}
+
+// 删除省份行
+function delPriceRow(prefix, idx) {
+  const row = document.getElementById(`price-row-${prefix}-${idx}`);
+  if (row) row.remove();
+}
+
+// 收集当前表格数据（含新增/删除后的结果）
+function collectPriceRows(prefix) {
+  const rows = [];
+  document.querySelectorAll(`[data-prefix="${prefix}"][data-field="province"]`).forEach(el => {
+    const i    = el.dataset.idx;
+    const prov = el.value.trim();
+    if (!prov) return; // 跳过空省份
+    rows.push({
+      province:    prov,
+      fee_3kg:     parseFloat(document.querySelector(`[data-prefix="${prefix}"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || 0),
+      fee_over3kg: parseFloat(document.querySelector(`[data-prefix="${prefix}"][data-idx="${i}"][data-field="fee_over3kg"]`)?.value || 0),
+      unit_price:  parseFloat(document.querySelector(`[data-prefix="${prefix}"][data-idx="${i}"][data-field="unit_price"]`)?.value || 0),
+    });
+  });
+  return rows;
 }
 
 async function savePrice() {
   if (!priceData) return;
   const msgEl = document.getElementById('save-msg-price');
   msgEl.textContent = '保存中...'; msgEl.style.color = 'var(--muted)';
-  const stData = priceData.shentong.map((r, i) => ({
-    province:    r.province,
-    fee_3kg:     parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || r.fee_3kg),
-    fee_over3kg: parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="fee_over3kg"]`)?.value || r.fee_over3kg),
-    unit_price:  parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="unit_price"]`)?.value || r.unit_price),
+  const chargeData = priceData.charge.map(c => ({
+    type:  c.type,
+    price: parseFloat(document.getElementById(`charge-${c.type}`)?.value || c.price)
   }));
-  const ztData = priceData.zhongtong.map((r, i) => ({
-    province:    r.province,
-    fee_3kg:     parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || r.fee_3kg),
-    fee_over3kg: parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="fee_over3kg"]`)?.value || r.fee_over3kg),
-    unit_price:  parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="unit_price"]`)?.value || r.unit_price),
-  }));
-  const chargeData = priceData.charge.map(c => ({ type:c.type, price:parseFloat(document.getElementById(`charge-${c.type}`)?.value || c.price) }));
   try {
-    const res  = await fetch('/price/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ shentong:stData, zhongtong:ztData, charge:chargeData }) });
+    const res  = await fetch('/price/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ shentong: collectPriceRows('st'), zhongtong: collectPriceRows('zt'), charge: chargeData })
+    });
     const data = await res.json();
     msgEl.textContent = data.ok ? '✅ 保存成功' : '❌ ' + data.msg;
     msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
+    if (data.ok) loadPrice(); // 刷新显示
   } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
   setTimeout(() => { msgEl.textContent = ''; }, 3000);
 }
 
+// ====================== 运行参数配置 ======================
+let rpLoaded = false;
+async function loadRunParams() {
+  if (rpLoaded) return;
+  try {
+    const res  = await fetch('/settings/get');
+    const data = await res.json();
+    if (!data.ok) return;
+    document.getElementById('rp-before').value        = data.extend_days_before;
+    document.getElementById('rp-after').value         = data.extend_days_after;
+    document.getElementById('rp-process-month').textContent = data.process_month   || '—';
+    document.getElementById('rp-start').textContent         = data.sql_start_date  || '—';
+    document.getElementById('rp-end').textContent           = data.sql_end_date    || '—';
+    rpLoaded = true;
+  } catch(e) {}
+}
+async function saveRunParams() {
+  const msgEl = document.getElementById('save-msg-rp');
+  msgEl.textContent = '保存中...'; msgEl.style.color = 'var(--muted)';
+  const payload = {
+    extend_days_before: parseInt(document.getElementById('rp-before').value || 15),
+    extend_days_after:  parseInt(document.getElementById('rp-after').value  || 5),
+  };
+  try {
+    const res  = await fetch('/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const data = await res.json();
+    msgEl.textContent = data.ok ? '✅ ' + data.msg : '❌ ' + data.msg;
+    msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
+    if (data.ok) rpLoaded = false; // 下次重新加载
+  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+  setTimeout(() => { msgEl.textContent = ''; }, 3000);
+}
+
+// ====================== 初始化 ======================
 window.addEventListener('load', () => { loadExpress(); loadPrice(); });
 </script>
 {% endblock %}

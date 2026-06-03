@@ -42,6 +42,56 @@
   .unmatched-stat { background:#0a0c12; border-radius:8px; padding:16px; text-align:center; }
   .unmatched-stat .u-label { font-size:11px; color:var(--muted); margin-bottom:6px; }
   .unmatched-stat .u-value { font-size:22px; font-weight:600; font-family:var(--mono); }
+
+  /* 异常运单 */
+  .anomaly-summary { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .anomaly-badge {
+    display:flex; align-items:center; gap:6px;
+    padding:6px 14px; border-radius:20px; font-size:12px; font-weight:500;
+    cursor:pointer; transition:all 0.2s;
+  }
+  .anomaly-badge.high { background:rgba(247,95,95,0.12);  color:var(--danger); border:1px solid rgba(247,95,95,0.25); }
+  .anomaly-badge.mid  { background:rgba(247,149,79,0.12); color:var(--warn);   border:1px solid rgba(247,149,79,0.25); }
+  .anomaly-badge.high:hover { background:rgba(247,95,95,0.2);  }
+  .anomaly-badge.mid:hover  { background:rgba(247,149,79,0.2); }
+  .anomaly-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .anomaly-dot.high { background:var(--danger); }
+  .anomaly-dot.mid  { background:var(--warn); }
+
+  .anomaly-list { display:flex; flex-direction:column; gap:10px; }
+  .anomaly-item {
+    border-radius:8px; border:1px solid var(--border);
+    overflow:hidden; transition:border-color 0.2s;
+  }
+  .anomaly-item.high { border-color:rgba(247,95,95,0.3); }
+  .anomaly-item.mid  { border-color:rgba(247,149,79,0.3); }
+  .anomaly-header {
+    display:flex; align-items:center; gap:10px;
+    padding:10px 16px; cursor:pointer;
+    background:rgba(255,255,255,0.02);
+    user-select:none;
+  }
+  .anomaly-header:hover { background:rgba(255,255,255,0.04); }
+  .anomaly-type  { font-size:13px; font-weight:500; flex:1; }
+  .anomaly-count { font-family:var(--mono); font-size:13px; }
+  .anomaly-count.high { color:var(--danger); }
+  .anomaly-count.mid  { color:var(--warn); }
+  .anomaly-pct   { font-size:11px; color:var(--muted); font-family:var(--mono); margin-left:4px; }
+  .anomaly-arrow { font-size:11px; color:var(--muted); transition:transform 0.2s; }
+  .anomaly-arrow.open { transform:rotate(90deg); }
+  .anomaly-detail {
+    display:none; padding:12px 16px;
+    border-top:1px solid var(--border);
+    background:#0a0c12;
+  }
+  .anomaly-detail.open { display:block; }
+  .anomaly-label { font-size:11px; color:var(--muted); margin-bottom:8px; }
+  .anomaly-samples { display:flex; flex-wrap:wrap; gap:6px; }
+  .sample-tag {
+    font-family:var(--mono); font-size:11px; padding:2px 8px;
+    border-radius:4px; background:var(--surface); border:1px solid var(--border);
+    color:var(--muted);
+  }
 </style>
 {% endblock %}
 
@@ -67,6 +117,15 @@
 <div class="card" style="margin-top:20px;">
   <div class="card-title" id="unmatched-title">未匹配运单分析</div>
   <div id="unmatched-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+</div>
+
+<!-- 异常运单分析 V3.2 -->
+<div class="card" style="margin-top:20px;">
+  <div class="card-title" id="anomaly-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>⚠️ 异常运单分析</span>
+    <a id="anomaly-dl-btn" style="display:none;" class="btn btn-outline btn-sm">⬇ 下载异常运单</a>
+  </div>
+  <div id="anomaly-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
 </div>
 
 <!-- 对账结果预览 -->
@@ -110,6 +169,7 @@ async function initMonthSelect() {
 async function loadAll(month) {
   loadStats(month);
   loadUnmatched(month);
+  loadAnomalies(month);
   loadPreview(month, 1, 'all', '');
 }
 
@@ -192,8 +252,98 @@ async function loadStats(month) {
   }
 }
 
-async function loadUnmatched(month) {
-  document.getElementById('unmatched-title').textContent = `未匹配运单分析 — ${month}`;
+// ── 异常运单分析（V3.2）────────────────────────────────────
+async function loadAnomalies(month) {
+  document.getElementById('anomaly-title').querySelector('span').textContent = `⚠️ 异常运单分析 — ${month}`;
+  const dlBtn = document.getElementById('anomaly-dl-btn');
+  dlBtn.style.display = 'none';
+  document.getElementById('anomaly-area').innerHTML =
+    '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div>';
+  try {
+    const res  = await fetch(`/stats/${month}`);
+    const data = await res.json();
+    const list = data.anomalies || [];
+
+    if (list.length === 0) {
+      document.getElementById('anomaly-area').innerHTML =
+        '<div style="color:var(--accent2);font-size:13px;padding:12px;">✅ 未发现异常运单</div>';
+      return;
+    }
+
+    // 有异常才显示下载按钮
+    dlBtn.href         = `/anomaly/download/${month}`;
+    dlBtn.style.display = 'inline-flex';
+
+    // 顶部概要徽章
+    const badges = list.map(a => `
+      <div class="anomaly-badge ${a.level}" onclick="toggleAnomaly('anomaly-detail-${a.type}', this)">
+        <span class="anomaly-dot ${a.level}"></span>
+        ${a.type}
+        <strong>${a.count}</strong> 条
+      </div>`).join('');
+
+    // 每条异常展开卡片
+    const items = list.map(a => `
+      <div class="anomaly-item ${a.level}">
+        <div class="anomaly-header" onclick="toggleAnomaly('anomaly-detail-${a.type}', this.querySelector('.anomaly-arrow'))">
+          <span class="anomaly-dot ${a.level}"></span>
+          <span class="anomaly-type">${a.type}</span>
+          <span class="anomaly-count ${a.level}">${a.count.toLocaleString()} 条
+            <span class="anomaly-pct">(${a.pct}%)</span>
+          </span>
+          <span class="anomaly-arrow">▶</span>
+        </div>
+        <div class="anomaly-detail" id="anomaly-detail-${a.type}">
+          <div class="anomaly-label">运单号样本（前5条）：</div>
+          <div class="anomaly-samples">
+            ${a.samples.length > 0
+              ? a.samples.map(s => `<span class="sample-tag">${s}</span>`).join('')
+              : '<span style="color:var(--muted);font-size:12px;">无样本数据</span>'}
+          </div>
+          ${a.type === '未匹配团队' ? `
+            <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.8;">
+              💡 可能原因：运单号不在数据库订单中，或 SQL 日期范围未覆盖该运单<br>
+              可在 <a href="/config" style="color:var(--accent)">配置 → 运行参数</a> 中调整扩展天数
+            </div>` : ''}
+          ${a.type === '重量异常' ? `
+            <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+              💡 判断条件：结算重量 ≤ 0 或 ≥ 50kg，建议人工核对原始账单
+            </div>` : ''}
+          ${a.type === '省份为空' ? `
+            <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+              💡 目的省份字段为空，计费模式可能判断不准确，建议检查原始账单格式
+            </div>` : ''}
+          ${a.type === '单票金额为零' ? `
+            <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+              💡 计费方式为单票但应付金额为0，可能是报价表缺少该省份数据，建议检查
+              <a href="/config" style="color:var(--accent)">配置 → 申通/中通报价</a>
+            </div>` : ''}
+        </div>
+      </div>`).join('');
+
+    document.getElementById('anomaly-area').innerHTML = `
+      <div class="anomaly-summary">${badges}</div>
+      <div class="anomaly-list">${items}</div>`;
+
+  } catch(e) {
+    document.getElementById('anomaly-area').innerHTML =
+      '<div style="color:var(--danger);padding:12px;">异常分析加载失败</div>';
+  }
+}
+
+function toggleAnomaly(detailId, arrowEl) {
+  const detail = document.getElementById(detailId);
+  if (!detail) return;
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open', !isOpen);
+  // 找到对应的箭头元素
+  const arrow = arrowEl?.classList?.contains('anomaly-arrow')
+    ? arrowEl
+    : document.querySelector(`#${detailId}`).previousElementSibling.querySelector('.anomaly-arrow');
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+async function loadUnmatched(month) {  document.getElementById('unmatched-title').textContent = `未匹配运单分析 — ${month}`;
   document.getElementById('unmatched-area').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px;">加载中...</div>';
   try {
     const res  = await fetch(`/unmatched/${month}`);
