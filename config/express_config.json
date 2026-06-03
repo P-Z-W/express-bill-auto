@@ -1,0 +1,24 @@
+{
+  "express_list": [
+    {
+      "enabled": true,
+      "identify_column": "业务时间",
+      "name": "申通"
+    },
+    {
+      "enabled": true,
+      "identify_column": "扫描时间",
+      "name": "中通"
+    },
+    {
+      "enabled": false,
+      "identify_column": "发货时间",
+      "name": "圆通"
+    },
+    {
+      "enabled": false,
+      "identify_column": "揽收时间",
+      "name": "极兔"
+    }
+  ]
+}

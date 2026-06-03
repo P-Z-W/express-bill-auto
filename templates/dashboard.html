@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}看板 · 毅播快递对账系统{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .stat-card .label { font-size:11px; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:8px; }
+  .stat-card .value { font-size:28px; font-weight:700; font-family:var(--mono); color:var(--text); }
+  .stat-card .sub   { font-size:12px; color:var(--muted); margin-top:4px; }
+  .stat-card.accent  { border-color:rgba(79,142,247,0.3);  background:rgba(79,142,247,0.05);  }
+  .stat-card.success { border-color:rgba(61,214,140,0.3);  background:rgba(61,214,140,0.05);  }
+  .stat-card.warn    { border-color:rgba(247,149,79,0.3);  background:rgba(247,149,79,0.05);  }
+  .stat-card.danger  { border-color:rgba(247,95,95,0.3);   background:rgba(247,95,95,0.05);   }
+  .stat-card.accent  .value { color:var(--accent); }
+  .stat-card.success .value { color:var(--accent2); }
+  .stat-card.warn    .value { color:var(--warn); }
+  .stat-card.danger  .value { color:var(--danger); }
+
+  .charts-row { display:grid; grid-template-columns:2fr 1fr; gap:20px; margin-bottom:20px; }
+  .chart-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .chart-card .chart-title { font-size:12px; color:var(--muted); margin-bottom:16px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; }
+
+  .bottom-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+
+  .top5-item {
+    display:flex; align-items:center; gap:12px;
+    padding:8px 0; border-bottom:0.5px solid var(--border);
+  }
+  .top5-item:last-child { border-bottom:none; }
+  .top5-rank   { font-family:var(--mono); font-size:11px; color:var(--muted); width:20px; text-align:center; }
+  .top5-name   { flex:1; font-size:13px; color:var(--text); }
+  .top5-amount { font-family:var(--mono); font-size:13px; color:var(--accent2); }
+
+  .quick-action { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px; }
+  .qa-btn {
+    padding:14px; border-radius:10px; border:1px solid var(--border);
+    background:var(--bg); cursor:pointer; text-align:center;
+    text-decoration:none; transition:all 0.2s; display:block;
+  }
+  .qa-btn:hover { border-color:var(--accent); background:rgba(79,142,247,0.05); }
+  .qa-btn .qa-icon  { font-size:22px; margin-bottom:6px; }
+  .qa-btn .qa-label { font-size:12px; color:var(--muted); }
+  .qa-btn:hover .qa-label { color:var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  🏠 数据看板
+  <span class="sub">express-bill-auto · v3.0.1</span>
+</div>
+
+<div class="dashboard-grid">
+  <div class="stat-card accent">
+    <div class="label">本月处理月份</div>
+    <div class="value">{{ process_month }}</div>
+    <div class="sub" id="last-run-time">加载中...</div>
+  </div>
+  <div class="stat-card success">
+    <div class="label">本月总费用</div>
+    <div class="value" id="total-amount">—</div>
+    <div class="sub">元</div>
+  </div>
+  <div class="stat-card warn">
+    <div class="label">未匹配率</div>
+    <div class="value" id="unmatched-ratio">—</div>
+    <div class="sub" id="unmatched-count">运单</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">历史处理月数</div>
+    <div class="value" id="history-count">—</div>
+    <div class="sub">个月</div>
+  </div>
+</div>
+
+<div class="charts-row">
+  <div class="chart-card">
+    <div class="chart-title">📈 各月总费用趋势</div>
+    <canvas id="trend-chart" height="120"></canvas>
+    <div id="trend-empty" style="display:none;color:var(--muted);font-size:13px;text-align:center;padding:20px;">暂无历史数据，运行对账后显示</div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">🥧 本月各团队占比</div>
+    <canvas id="pie-chart"></canvas>
+    <div id="pie-empty" style="display:none;color:var(--muted);font-size:13px;text-align:center;padding:20px;">暂无团队数据</div>
+  </div>
+</div>
+
+<div class="bottom-row">
+  <div class="chart-card">
+    <div class="chart-title">🏆 本月团队费用 TOP5</div>
+    <div id="top5-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">⚡ 快速操作</div>
+    <div class="quick-action">
+      <a href="/run"     class="qa-btn"><div class="qa-icon">▶</div><div class="qa-label">开始运行</div></a>
+      <a href="/history" class="qa-btn"><div class="qa-icon">📋</div><div class="qa-label">历史记录</div></a>
+      <a href="/stats"   class="qa-btn"><div class="qa-icon">📊</div><div class="qa-label">统计报表</div></a>
+      <a href="/config"  class="qa-btn"><div class="qa-icon">⚙️</div><div class="qa-label">系统配置</div></a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+const MONTH = '{{ process_month }}';
+let trendChart = null;
+let pieChart   = null;
+
+async function loadDashboard() {
+  // ── 三个接口并发请求，总耗时 ≈ 最慢那个，而不是三者之和 ──────────
+  const [histResult, statsResult, unmatchedResult] = await Promise.allSettled([
+    fetch('/history/api').then(r => r.json()),
+    fetch(`/stats/${MONTH}`).then(r => r.json()),
+    fetch(`/unmatched/${MONTH}`).then(r => r.json())
+  ]);
+
+  // ── 历史记录 ─────────────────────────────────────────────────────
+  if (histResult.status === 'fulfilled') {
+    const histData = histResult.value;
+    document.getElementById('history-count').textContent = histData.length || '0';
+    if (histData.length > 0) {
+      const latest = histData[0];
+      document.getElementById('last-run-time').textContent =
+        latest.last_time ? `上次运行：${latest.last_time}` : '暂无运行记录';
+    } else {
+      document.getElementById('last-run-time').textContent = '暂无运行记录';
+    }
+  } else {
+    document.getElementById('history-count').textContent = '—';
+    document.getElementById('last-run-time').textContent = '加载失败';
+  }
+
+  // ── 统计数据（趋势图 + 饼图 + TOP5）─────────────────────────────
+  if (statsResult.status === 'fulfilled') {
+    const statsData = statsResult.value;
+    const trend     = statsData.monthly_trend || [];
+    const teams     = statsData.team_stats    || [];
+
+    // 本月总费用
+    const currentMonth = trend.find(t => t.month === MONTH);
+    document.getElementById('total-amount').textContent =
+      currentMonth ? currentMonth.total.toFixed(2) : '0.00';
+
+    // 趋势折线图
+    if (trendChart) trendChart.destroy();
+    if (trend.length > 0) {
+      document.getElementById('trend-chart').style.display = '';
+      document.getElementById('trend-empty').style.display  = 'none';
+      trendChart = new Chart(document.getElementById('trend-chart'), {
+        type: 'line',
+        data: {
+          labels: trend.map(t => t.month),
+          datasets: [{
+            label: '总费用（元）',
+            data:  trend.map(t => t.total),
+            borderColor: '#4f8ef7',
+            backgroundColor: 'rgba(79,142,247,0.1)',
+            borderWidth: 2, pointRadius: 4,
+            pointBackgroundColor: '#4f8ef7',
+            fill: true, tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color:'#6b7099', font:{ size:11 } } } },
+          scales: {
+            x: { ticks:{ color:'#6b7099' }, grid:{ color:'#2a2d3a' } },
+            y: { ticks:{ color:'#6b7099' }, grid:{ color:'#2a2d3a' } }
+          }
+        }
+      });
+    } else {
+      document.getElementById('trend-chart').style.display = 'none';
+      document.getElementById('trend-empty').style.display  = '';
+    }
+
+    // 饼图
+    const colors = ['#4f8ef7','#3dd68c','#f7954f','#f75f5f','#a78bfa','#34d399','#fb923c','#60a5fa','#f472b6','#facc15'];
+    if (pieChart) pieChart.destroy();
+    if (teams.length > 0) {
+      document.getElementById('pie-chart').style.display = '';
+      document.getElementById('pie-empty').style.display  = 'none';
+      pieChart = new Chart(document.getElementById('pie-chart'), {
+        type: 'doughnut',
+        data: {
+          labels: teams.slice(0,8).map(t => t.team),
+          datasets: [{ data: teams.slice(0,8).map(t => t.amount), backgroundColor: colors, borderWidth: 0 }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position:'bottom', labels:{ color:'#6b7099', font:{ size:10 }, padding:8 } } }
+        }
+      });
+    } else {
+      document.getElementById('pie-chart').style.display = 'none';
+      document.getElementById('pie-empty').style.display  = '';
+    }
+
+    // TOP5
+    const top5   = teams.slice(0, 5);
+    const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+    document.getElementById('top5-list').innerHTML = top5.length > 0
+      ? top5.map((t, i) => `
+          <div class="top5-item">
+            <span class="top5-rank">${medals[i]}</span>
+            <span class="top5-name">${t.team}</span>
+            <span class="top5-amount">${t.amount.toFixed(2)} 元</span>
+          </div>`).join('')
+      : '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">暂无数据，运行对账后显示</div>';
+  } else {
+    document.getElementById('total-amount').textContent = '加载失败';
+    document.getElementById('top5-list').innerHTML =
+      '<div style="color:var(--danger);font-size:13px;padding:12px;">统计数据加载失败</div>';
+  }
+
+  // ── 未匹配率 ──────────────────────────────────────────────────────
+  if (unmatchedResult.status === 'fulfilled' && unmatchedResult.value.ok) {
+    const d = unmatchedResult.value;
+    document.getElementById('unmatched-ratio').textContent = d.ratio + '%';
+    document.getElementById('unmatched-count').textContent = `共 ${d.unmatched.toLocaleString()} 条未匹配`;
+  } else {
+    document.getElementById('unmatched-ratio').textContent = '—';
+    document.getElementById('unmatched-count').textContent = '尚未运行对账';
+  }
+}
+
+window.addEventListener('load', loadDashboard);
+</script>
+{% endblock %}

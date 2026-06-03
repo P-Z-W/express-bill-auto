@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}毅播快递对账系统{% endblock %}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg:      #0f1117;
+    --surface: #1a1d27;
+    --border:  #2a2d3a;
+    --accent:  #4f8ef7;
+    --accent2: #3dd68c;
+    --warn:    #f7954f;
+    --danger:  #f75f5f;
+    --text:    #e4e6f0;
+    --muted:   #6b7099;
+    --mono:    'JetBrains Mono', monospace;
+    --sans:    'Noto Sans SC', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding-top: 52px;
+  }
+
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0; height: 52px;
+    background: rgba(15,17,23,0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; z-index: 999;
+  }
+  .topbar-left { display:flex; align-items:center; gap:12px; }
+  .topbar-logo { font-size:15px; font-weight:700; color:var(--text); text-decoration:none; }
+  .topbar-logo span { color:var(--accent); }
+  .topbar-month {
+    font-family:var(--mono); font-size:13px; color:var(--accent);
+    background:rgba(79,142,247,0.1); padding:3px 10px;
+    border-radius:6px; border:1px solid rgba(79,142,247,0.2);
+  }
+  .topbar-nav { display:flex; align-items:center; gap:2px; }
+  .nav-link {
+    font-size:13px; color:var(--muted); background:none; border:none;
+    cursor:pointer; padding:6px 12px; border-radius:6px;
+    text-decoration:none; transition:color 0.2s, background 0.2s;
+    display:flex; align-items:center; gap:5px;
+  }
+  .nav-link:hover { color:var(--text); background:rgba(255,255,255,0.06); }
+  .nav-link.active { color:var(--accent); background:rgba(79,142,247,0.1); }
+  .topbar-right { display:flex; align-items:center; gap:10px; }
+  .topbar-status { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); font-family:var(--mono); }
+  .topbar-dot { width:6px; height:6px; border-radius:50%; background:var(--border); }
+  .topbar-dot.running { background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
+  .topbar-dot.done    { background:var(--accent2); }
+  .topbar-dot.error   { background:var(--danger); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+  .page { padding:28px 24px; max-width:1200px; margin:0 auto; }
+  .page-title { font-size:18px; font-weight:700; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+  .page-title .sub { font-size:13px; color:var(--muted); font-weight:400; font-family:var(--mono); }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; }
+  .card-title { font-size:12px; font-weight:500; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:20px; }
+  .card + .card { margin-top:20px; }
+
+  .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .data-table th { background:var(--bg); color:var(--muted); font-size:11px; padding:8px 12px; text-align:left; border-bottom:0.5px solid var(--border); font-weight:500; white-space:nowrap; }
+  .data-table td { padding:10px 12px; border-bottom:0.5px solid var(--border); color:var(--text); }
+  .data-table tr:last-child td { border-bottom:none; }
+  .data-table tr:hover td { background:rgba(255,255,255,0.02); }
+
+  .badge-ok   { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(61,214,140,0.12);  color:#3dd68c; }
+  .badge-fail { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(247,95,95,0.12);   color:#f75f5f; }
+  .badge-none { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(107,112,153,0.12); color:#6b7099; }
+
+  .btn {
+    padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500;
+    font-family:var(--sans); cursor:pointer; border:none; transition:all 0.2s;
+    text-decoration:none; display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn-primary { background:var(--accent); color:#fff; }
+  .btn-primary:hover:not(:disabled) { background:#3a7ae0; }
+  .btn-primary:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; }
+  .btn-outline { background:transparent; color:var(--accent); border:1px solid var(--border); }
+  .btn-outline:hover { background:rgba(79,142,247,0.08); border-color:var(--accent); }
+  .btn-sm { padding:4px 12px; font-size:12px; border-radius:6px; }
+  .btn-success { background:transparent; color:var(--accent2); border:1px solid var(--accent2); }
+  .btn-success:hover { background:rgba(61,214,140,0.08); }
+
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <a href="/" class="topbar-logo">毅播 <span>快递对账系统</span></a>
+    <div class="topbar-month">{{ process_month }}</div>
+  </div>
+  <nav class="topbar-nav">
+    <a href="/"        class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">🏠 看板</a>
+    <a href="/run"     class="nav-link {% if active_page == 'run' %}active{% endif %}">▶ 运行</a>
+    <a href="/history" class="nav-link {% if active_page == 'history' %}active{% endif %}">📋 历史</a>
+    <a href="/stats"   class="nav-link {% if active_page == 'stats' %}active{% endif %}">📊 统计</a>
+    <a href="/config"  class="nav-link {% if active_page == 'config' %}active{% endif %}">⚙️ 配置</a>
+  </nav>
+  <div class="topbar-right">
+    <div class="topbar-status">
+      <div class="topbar-dot" id="topbar-dot"></div>
+      <span id="topbar-status-text">就绪</span>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+  {% block content %}{% endblock %}
+</div>
+
+<script>
+(function syncStatus() {
+  async function check() {
+    try {
+      const res  = await fetch('/status');
+      const data = await res.json();
+      const dot  = document.getElementById('topbar-dot');
+      const txt  = document.getElementById('topbar-status-text');
+      if (!dot) return;
+      if (data.running) {
+        dot.className   = 'topbar-dot running';
+        txt.textContent = '运行中...';
+      } else {
+        dot.className   = 'topbar-dot' + (data.result && data.result.success ? ' done' : '');
+        txt.textContent = '就绪';
+      }
+    } catch(e) {}
+  }
+  check();
+  setInterval(check, 5000);
+})();
+</script>
+
+{% block extra_script %}{% endblock %}
+</body>
+</html>

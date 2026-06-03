@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}运行 · 毅播快递对账系统{% endblock %}
+
+{% block extra_head %}
+<style>
+  .run-grid { display:grid; grid-template-columns:380px 1fr; gap:20px; }
+
+  .upload-item { margin-bottom:16px; }
+  .upload-label { font-size:13px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .upload-dot { width:6px; height:6px; border-radius:50%; background:var(--border); transition:background 0.3s; }
+  .upload-dot.done { background:var(--accent2); }
+  .upload-box {
+    border:1.5px dashed var(--border); border-radius:8px; padding:14px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+    cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden;
+  }
+  .upload-box:hover { border-color:var(--accent); background:rgba(79,142,247,0.04); }
+  .upload-box.uploaded { border-color:var(--accent2); border-style:solid; }
+  .upload-box input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .upload-filename { font-family:var(--mono); font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+  .upload-filename.placeholder { color:var(--muted); }
+  .upload-msg { font-size:12px; margin-top:6px; padding:6px 10px; border-radius:6px; font-family:var(--mono); display:none; }
+  .upload-msg.show { display:block; }
+  .upload-msg.ok  { background:rgba(61,214,140,0.1); color:var(--accent2); }
+  .upload-msg.err { background:rgba(247,95,95,0.1);  color:var(--danger); }
+
+  .run-btn {
+    width:100%; margin-top:24px; padding:14px;
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    font-size:15px; font-weight:600; font-family:var(--sans);
+    cursor:pointer; transition:all 0.2s;
+  }
+  .run-btn:hover:not(:disabled) { background:#3a7ae0; }
+  .run-btn:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; }
+  .dl-btn {
+    width:100%; margin-top:12px; padding:12px; background:transparent;
+    color:var(--accent2); border:1.5px solid var(--accent2); border-radius:8px;
+    font-size:14px; font-weight:500; cursor:pointer; display:none;
+    text-decoration:none; text-align:center;
+  }
+  .dl-btn:hover { background:rgba(61,214,140,0.08); }
+  .dl-btn.show { display:block; }
+
+  .progress-section { }
+  .log-status { display:flex; align-items:center; gap:8px; margin-bottom:16px; }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--border); }
+  .status-dot.running { background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
+  .status-dot.done    { background:var(--accent2); }
+  .status-dot.error   { background:var(--danger); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+  .status-text { font-size:12px; color:var(--muted); font-family:var(--mono); }
+
+  .progress-wrap { margin-bottom:20px; }
+  .progress-bar-bg { width:100%; height:8px; background:var(--border); border-radius:4px; overflow:hidden; margin-bottom:8px; }
+  .progress-bar-fill { height:100%; background:var(--accent); border-radius:4px; transition:width 0.6s ease; width:0%; }
+  .progress-bar-fill.done  { background:var(--accent2); }
+  .progress-bar-fill.error { background:var(--danger); }
+  .progress-pct { font-family:var(--mono); font-size:13px; color:var(--muted); text-align:right; }
+
+  .steps-wrap { display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+  .step-item {
+    display:flex; align-items:center; gap:10px; padding:12px 16px;
+    border-radius:8px; background:#0a0c12; border:1px solid var(--border);
+    font-size:13px; transition:all 0.3s;
+  }
+  .step-item.active { border-color:var(--accent);  background:rgba(79,142,247,0.06); }
+  .step-item.done   { border-color:var(--accent2); background:rgba(61,214,140,0.06); }
+  .step-item.error  { border-color:var(--danger);  background:rgba(247,95,95,0.06); }
+  .step-icon { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+  .step-text { color:var(--muted); }
+  .step-item.active .step-text { color:var(--accent); }
+  .step-item.done   .step-text { color:var(--accent2); }
+  .step-item.error  .step-text { color:var(--danger); }
+  .elapsed-text { font-family:var(--mono); font-size:12px; color:var(--muted); text-align:center; min-height:20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">▶ 运行操作</div>
+
+<div class="run-grid">
+  <!-- 左侧：上传+运行 -->
+  <div class="card">
+    <div class="card-title">账单上传 &amp; 运行</div>
+
+    <div class="upload-item">
+      <div class="upload-label">
+        <span class="upload-dot" id="dot-st"></span>
+        申通账单
+      </div>
+      <div class="upload-box" id="box-st">
+        <span class="upload-filename placeholder" id="name-st">点击选择文件...</span>
+        <span style="font-size:18px">📄</span>
+        <input type="file" accept=".xlsx" onchange="uploadFile(this,'st')">
+      </div>
+      <div class="upload-msg" id="msg-st"></div>
+    </div>
+
+    <div class="upload-item">
+      <div class="upload-label">
+        <span class="upload-dot" id="dot-zt"></span>
+        中通账单
+      </div>
+      <div class="upload-box" id="box-zt">
+        <span class="upload-filename placeholder" id="name-zt">点击选择文件...</span>
+        <span style="font-size:18px">📄</span>
+        <input type="file" accept=".xlsx" onchange="uploadFile(this,'zt')">
+      </div>
+      <div class="upload-msg" id="msg-zt"></div>
+    </div>
+
+    <button class="run-btn" id="run-btn" onclick="startRun()">▶ 开始运行</button>
+    <a class="dl-btn" id="dl-btn" href="/download">⬇ 下载结果 ZIP</a>
+  </div>
+
+  <!-- 右侧：进度 -->
+  <div class="card progress-section">
+    <div class="card-title">运行进度</div>
+    <div class="log-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">等待运行...</span>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-pct" id="progress-pct">0%</div>
+    </div>
+    <div class="steps-wrap">
+      <div class="step-item" id="step-1"><span class="step-icon" id="icon-1">⬜</span><span class="step-text">第一步：下载订单数据</span></div>
+      <div class="step-item" id="step-2"><span class="step-icon" id="icon-2">⬜</span><span class="step-text">第二步：合并快递账单</span></div>
+      <div class="step-item" id="step-3"><span class="step-icon" id="icon-3">⬜</span><span class="step-text">第三步：运单匹配对账</span></div>
+      <div class="step-item" id="step-4"><span class="step-icon" id="icon-4">⬜</span><span class="step-text">第四步：按团队拆分账单</span></div>
+    </div>
+    <div class="elapsed-text" id="elapsed-text"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+  const STEP_PROGRESS = { 0:5, 1:25, 2:50, 3:75, 4:100 };
+  let pollTimer = null;
+
+  async function uploadFile(input, type) {
+    const file = input.files[0];
+    if (!file) return;
+    const nameEl = document.getElementById(`name-${type}`);
+    const msgEl  = document.getElementById(`msg-${type}`);
+    const boxEl  = document.getElementById(`box-${type}`);
+    const dotEl  = document.getElementById(`dot-${type}`);
+    nameEl.textContent = file.name;
+    nameEl.classList.remove('placeholder');
+    showMsg(msgEl, '⏳ 上传中...', '');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res  = await fetch('/upload', { method:'POST', body:fd });
+      const data = await res.json();
+      if (data.ok) {
+        showMsg(msgEl, data.msg, 'ok');
+        boxEl.classList.add('uploaded');
+        dotEl.classList.add('done');
+      } else {
+        showMsg(msgEl, data.msg, 'err');
+      }
+    } catch(e) {
+      showMsg(msgEl, '❌ 上传失败，请重试', 'err');
+    }
+  }
+
+  function showMsg(el, text, type) {
+    el.textContent = text;
+    el.className   = 'upload-msg show' + (type ? ' '+type : '');
+  }
+
+  async function startRun() {
+    const btn   = document.getElementById('run-btn');
+    const dlBtn = document.getElementById('dl-btn');
+    resetProgress();
+    dlBtn.classList.remove('show');
+    btn.disabled    = true;
+    btn.textContent = '⏳ 运行中...';
+    setStatus('running', '任务运行中...');
+    try {
+      const res  = await fetch('/run', { method:'POST' });
+      const data = await res.json();
+      if (!data.ok) {
+        setStatus('error', '启动失败：' + data.msg);
+        btn.disabled    = false;
+        btn.textContent = '▶ 开始运行';
+        return;
+      }
+      listenLogs();
+      startPolling();
+    } catch(e) {
+      setStatus('error', '网络错误');
+      btn.disabled    = false;
+      btn.textContent = '▶ 开始运行';
+    }
+  }
+
+  function listenLogs() {
+    const es = new EventSource('/logs');
+    es.onmessage = function(e) {
+      const msg = JSON.parse(e.data);
+      if (msg === '__PING__') return;
+      if (msg === '__DONE__') { es.close(); stopPolling(); onTaskDone(); return; }
+      if (msg.startsWith('__STEP__')) { updateProgress(parseInt(msg.replace('__STEP__',''))); return; }
+      if (msg.startsWith('__STEP_FAIL__')) { markStepError(parseInt(msg.replace('__STEP_FAIL__',''))); return; }
+    };
+    es.onerror = function() { es.close(); };
+  }
+
+  function updateProgress(step) {
+    const pct = STEP_PROGRESS[step] || 0;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent  = pct + '%';
+    for (let i = 1; i <= 4; i++) {
+      const el   = document.getElementById(`step-${i}`);
+      const icon = document.getElementById(`icon-${i}`);
+      el.className = 'step-item';
+      if (i <= step)              { el.classList.add('done');   icon.textContent = '✅'; }
+      else if (i === step+1 && step < 4) { el.classList.add('active'); icon.textContent = '🔄'; }
+      else                        { icon.textContent = '⬜'; }
+    }
+  }
+
+  function markStepError(step) {
+    const el = document.getElementById(`step-${step}`);
+    if (el) { el.className = 'step-item error'; document.getElementById(`icon-${step}`).textContent = '❌'; }
+    document.getElementById('progress-fill').classList.add('error');
+  }
+
+  function resetProgress() {
+    document.getElementById('progress-fill').style.width = '0%';
+    document.getElementById('progress-fill').className  = 'progress-bar-fill';
+    document.getElementById('progress-pct').textContent  = '0%';
+    document.getElementById('elapsed-text').textContent  = '';
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(`step-${i}`).className  = 'step-item';
+      document.getElementById(`icon-${i}`).textContent = '⬜';
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch('/status');
+        const data = await res.json();
+        if (!data.running && data.result && data.result.output_folder) { stopPolling(); onTaskDone(); }
+      } catch(e) {}
+    }, 3000);
+  }
+  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  function onTaskDone() {
+    const btn   = document.getElementById('run-btn');
+    const dlBtn = document.getElementById('dl-btn');
+    btn.disabled    = false;
+    btn.textContent = '▶ 再次运行';
+    fetch('/status').then(r => r.json()).then(data => {
+      const elapsed = data.result && data.result.elapsed ? data.result.elapsed : '';
+      if (data.result && data.result.success) {
+        setStatus('done', elapsed ? `运行完成 ✅  耗时：${elapsed}` : '运行完成 ✅');
+        dlBtn.classList.add('show');
+        updateProgress(4);
+        document.getElementById('progress-fill').classList.add('done');
+        document.getElementById('elapsed-text').textContent = elapsed ? `⏱ 本次耗时：${elapsed}` : '';
+      } else {
+        setStatus('error', '运行异常，请查看 run.log');
+        document.getElementById('progress-fill').classList.add('error');
+      }
+    });
+  }
+
+  function setStatus(state, text) {
+    document.getElementById('status-dot').className   = 'status-dot ' + state;
+    document.getElementById('status-text').textContent = text;
+    document.getElementById('topbar-dot').className   = 'topbar-dot ' + state;
+    document.getElementById('topbar-status-text').textContent = text;
+  }
+</script>
+{% endblock %}

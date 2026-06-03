@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}系统配置 · 毅播快递对账系统{% endblock %}
+
+{% block extra_head %}
+<style>
+  .config-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .tab-bar { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:0; }
+  .tab-btn { font-size:13px; padding:8px 16px; border:none; background:none; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.2s; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .price-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .price-table th { background:var(--bg); color:var(--muted); font-size:12px; padding:8px 12px; text-align:left; border-bottom:0.5px solid var(--border); font-weight:500; }
+  .price-table td { padding:6px 8px; border-bottom:0.5px solid var(--border); }
+  .price-input { width:90px; padding:4px 8px; font-size:12px; font-family:var(--mono); background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; text-align:right; }
+  .price-input:focus { outline:none; border-color:var(--accent); }
+
+  .express-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:0.5px solid var(--border); }
+  .express-item:last-child { border-bottom:none; }
+  .express-name { font-size:14px; font-weight:500; flex:1; }
+  .express-col  { font-size:12px; color:var(--muted); flex:1; font-family:var(--mono); }
+  .toggle-btn {
+    width:44px; height:24px; border-radius:12px; border:none; cursor:pointer;
+    background:var(--border); position:relative; transition:background 0.3s;
+  }
+  .toggle-btn.on { background:var(--accent2); }
+  .toggle-btn::after { content:''; position:absolute; width:18px; height:18px; background:#fff; border-radius:50%; top:3px; left:3px; transition:left 0.3s; }
+  .toggle-btn.on::after { left:23px; }
+
+  .save-bar { display:flex; align-items:center; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+  .save-msg { font-size:12px; font-family:var(--mono); }
+  .charge-row { display:flex; align-items:center; gap:16px; margin-bottom:12px; font-size:13px; }
+  .charge-label { color:var(--muted); width:60px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">⚙️ 系统配置</div>
+
+<div class="card">
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('express')">🚚 快递管理</button>
+    <button class="tab-btn" onclick="switchTab('st')">申通报价</button>
+    <button class="tab-btn" onclick="switchTab('zt')">中通报价</button>
+    <button class="tab-btn" onclick="switchTab('charge')">充单价格</button>
+  </div>
+
+  <!-- 快递管理 -->
+  <div class="tab-content active" id="tab-express">
+    <div class="card-title">快递公司管理</div>
+    <div id="express-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+    <div class="save-bar">
+      <button class="btn btn-primary" onclick="saveExpress()">💾 保存快递配置</button>
+      <span class="save-msg" id="save-msg-express"></span>
+    </div>
+  </div>
+
+  <!-- 申通报价 -->
+  <div class="tab-content" id="tab-st">
+    <div id="price-st-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  </div>
+
+  <!-- 中通报价 -->
+  <div class="tab-content" id="tab-zt">
+    <div id="price-zt-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  </div>
+
+  <!-- 充单价格 -->
+  <div class="tab-content" id="tab-charge">
+    <div id="price-charge-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  </div>
+
+  <!-- 价格保存按钮（申通/中通/充单共用） -->
+  <div class="save-bar" id="price-save-bar" style="display:none;">
+    <button class="btn btn-primary" onclick="savePrice()">💾 保存价格修改</button>
+    <span class="save-msg" id="save-msg-price"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+let priceData   = null;
+let expressData = null;
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', ['express','st','zt','charge'][i] === tab);
+  });
+  document.querySelectorAll('.tab-content').forEach((el, i) => {
+    el.classList.toggle('active', ['tab-express','tab-st','tab-zt','tab-charge'][i] === `tab-${tab}`);
+  });
+  const priceSaveBar = document.getElementById('price-save-bar');
+  priceSaveBar.style.display = tab !== 'express' ? 'flex' : 'none';
+}
+
+// ---- 快递配置 ----
+async function loadExpress() {
+  try {
+    const res  = await fetch('/express/config');
+    const data = await res.json();
+    if (!data.ok) return;
+    expressData = data.express_list;
+    const html = expressData.map((e, i) => `
+      <div class="express-item">
+        <span class="express-name">${e.name}</span>
+        <span class="express-col">识别列：${e.identify_column}</span>
+        <button class="toggle-btn ${e.enabled ? 'on' : ''}" id="toggle-${i}" onclick="toggleExpress(${i})"></button>
+        <span style="font-size:12px;color:var(--muted)">${e.enabled ? '已启用' : '已禁用'}</span>
+      </div>`).join('');
+    document.getElementById('express-list').innerHTML = html || '<div style="color:var(--muted);padding:12px;">暂无快递配置</div>';
+  } catch(e) {
+    document.getElementById('express-list').innerHTML = '<div style="color:var(--danger);padding:12px;">加载失败</div>';
+  }
+}
+
+function toggleExpress(idx) {
+  if (!expressData) return;
+  expressData[idx].enabled = !expressData[idx].enabled;
+  const btn = document.getElementById(`toggle-${idx}`);
+  btn.classList.toggle('on', expressData[idx].enabled);
+  btn.nextElementSibling.textContent = expressData[idx].enabled ? '已启用' : '已禁用';
+}
+
+async function saveExpress() {
+  const msgEl = document.getElementById('save-msg-express');
+  msgEl.textContent = '保存中...'; msgEl.style.color = 'var(--muted)';
+  try {
+    const res  = await fetch('/express/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ express_list: expressData }) });
+    const data = await res.json();
+    msgEl.textContent = data.ok ? '✅ 保存成功' : '❌ ' + data.msg;
+    msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
+  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+  setTimeout(() => { msgEl.textContent = ''; }, 3000);
+}
+
+// ---- 价格配置 ----
+async function loadPrice() {
+  try {
+    const res  = await fetch('/price/get');
+    const data = await res.json();
+    if (!data.ok) return;
+    priceData = data;
+    renderPriceTable('price-st-area',  data.shentong,  'st');
+    renderPriceTable('price-zt-area',  data.zhongtong, 'zt');
+    let chargeHtml = data.charge.map(c => `
+      <div class="charge-row">
+        <span class="charge-label">${c.type}</span>
+        <input class="price-input" id="charge-${c.type}" type="number" step="0.01" value="${c.price}">
+        <span style="color:var(--muted);font-size:12px;">元/单</span>
+      </div>`).join('');
+    document.getElementById('price-charge-area').innerHTML = chargeHtml || '<div style="color:var(--muted);padding:12px;">暂无数据</div>';
+  } catch(e) {}
+}
+
+function renderPriceTable(containerId, rows, prefix) {
+  if (!rows || rows.length === 0) { document.getElementById(containerId).innerHTML = '<div style="color:var(--muted);padding:12px;">暂无数据</div>'; return; }
+  const trs = rows.map((r, i) => `
+    <tr>
+      <td style="color:var(--muted);font-size:13px;">${r.province}</td>
+      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_3kg"     type="number" step="0.01" value="${r.fee_3kg}"></td>
+      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="fee_over3kg" type="number" step="0.01" value="${r.fee_over3kg}"></td>
+      <td><input class="price-input" data-prefix="${prefix}" data-idx="${i}" data-field="unit_price"  type="number" step="0.01" value="${r.unit_price}"></td>
+    </tr>`).join('');
+  document.getElementById(containerId).innerHTML = `
+    <table class="price-table">
+      <thead><tr><th>省份</th><th>3kg内面单费</th><th>超3kg面单费</th><th>续重单价</th></tr></thead>
+      <tbody>${trs}</tbody>
+    </table>`;
+}
+
+async function savePrice() {
+  if (!priceData) return;
+  const msgEl = document.getElementById('save-msg-price');
+  msgEl.textContent = '保存中...'; msgEl.style.color = 'var(--muted)';
+  const stData = priceData.shentong.map((r, i) => ({
+    province:    r.province,
+    fee_3kg:     parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || r.fee_3kg),
+    fee_over3kg: parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="fee_over3kg"]`)?.value || r.fee_over3kg),
+    unit_price:  parseFloat(document.querySelector(`[data-prefix="st"][data-idx="${i}"][data-field="unit_price"]`)?.value || r.unit_price),
+  }));
+  const ztData = priceData.zhongtong.map((r, i) => ({
+    province:    r.province,
+    fee_3kg:     parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || r.fee_3kg),
+    fee_over3kg: parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="fee_over3kg"]`)?.value || r.fee_over3kg),
+    unit_price:  parseFloat(document.querySelector(`[data-prefix="zt"][data-idx="${i}"][data-field="unit_price"]`)?.value || r.unit_price),
+  }));
+  const chargeData = priceData.charge.map(c => ({ type:c.type, price:parseFloat(document.getElementById(`charge-${c.type}`)?.value || c.price) }));
+  try {
+    const res  = await fetch('/price/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ shentong:stData, zhongtong:ztData, charge:chargeData }) });
+    const data = await res.json();
+    msgEl.textContent = data.ok ? '✅ 保存成功' : '❌ ' + data.msg;
+    msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
+  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+  setTimeout(() => { msgEl.textContent = ''; }, 3000);
+}
+
+window.addEventListener('load', () => { loadExpress(); loadPrice(); });
+</script>
+{% endblock %}
