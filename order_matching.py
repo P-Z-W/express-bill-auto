@@ -26,7 +26,6 @@
 """
 import pandas as pd
 import os
-from sys import exit
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
@@ -63,15 +62,13 @@ def load_price_config():
     # 读取申通报价
     df_st = read_excel(PRICE_CONFIG_PATH)
     if df_st is None:
-        print("❌ 读取申通报价失败")
-        exit(1)
+        raise RuntimeError("读取申通报价失败")
 
     # 重新按sheet读取
     try:
         df_st = pd.read_excel(PRICE_CONFIG_PATH, sheet_name="申通报价")
     except Exception as e:
-        print(f"❌ 读取申通报价失败：{str(e)}")
-        exit(1)
+        raise RuntimeError(f"读取申通报价失败：{str(e)}") from e
 
     st_map = {}
     for idx, row in df_st.iterrows():
@@ -85,16 +82,14 @@ def load_price_config():
                 "续重单价":     float(row.iloc[4])
             }
         except Exception as e:
-            print(f"❌ 申通报价第{idx+2}行数据异常：{str(e)}")
-            exit(1)
+            raise RuntimeError(f"申通报价第{idx+2}行数据异常：{str(e)}") from e
     price_dict["申通"] = st_map
 
     # 读取中通报价
     try:
         df_zt = pd.read_excel(PRICE_CONFIG_PATH, sheet_name="中通报价")
     except Exception as e:
-        print(f"❌ 读取中通报价失败：{str(e)}")
-        exit(1)
+        raise RuntimeError(f"读取中通报价失败：{str(e)}") from e
 
     zt_map = {}
     for idx, row in df_zt.iterrows():
@@ -108,16 +103,14 @@ def load_price_config():
                 "续重单价":     float(row.iloc[4])
             }
         except Exception as e:
-            print(f"❌ 中通报价第{idx+2}行数据异常：{str(e)}")
-            exit(1)
+            raise RuntimeError(f"中通报价第{idx+2}行数据异常：{str(e)}") from e
     price_dict["中通"] = zt_map
 
     # 读取充单价格
     try:
         df_charge = pd.read_excel(PRICE_CONFIG_PATH, sheet_name="客户快递加收单价信息记录")
     except Exception as e:
-        print(f"❌ 读取充单价格失败：{str(e)}")
-        exit(1)
+        raise RuntimeError(f"读取充单价格失败：{str(e)}") from e
 
     charge_map = {}
     for idx, row in df_charge.iterrows():
@@ -128,12 +121,10 @@ def load_price_config():
             try:
                 charge_map[type_name] = float(row.iloc[11])
             except Exception as e:
-                print(f"❌ 充单价格第{idx+2}行数据异常：{str(e)}")
-                exit(1)
+                raise RuntimeError(f"充单价格第{idx+2}行数据异常：{str(e)}") from e
 
     if "申通" not in charge_map or "中通" not in charge_map:
-        print("❌ 充单价格配置不全，请检查 price_config.xlsx")
-        exit(1)
+        raise RuntimeError("充单价格配置不全，请检查 price_config.xlsx")
 
     price_dict["充单价"] = charge_map
     print(f"✅ 报价表加载完成：申通{len(st_map)}省份，中通{len(zt_map)}省份，充单价：{charge_map}")
@@ -192,18 +183,16 @@ def load_source_data():
     """读取清洗合并账单 + 订单匹配文件"""
     # 读取清洗合并总账单
     if not os.path.exists(EXPRESS_FILE):
-        print(f"❌ 未找到清洗合并总账单，请先运行 merge_express.py")
-        exit(1)
+        raise RuntimeError("未找到清洗合并总账单，请先运行 merge_express.py")
 
     df_express = read_excel(EXPRESS_FILE)
     if df_express is None:
-        exit(1)
+        raise RuntimeError("清洗合并账单读取失败")
 
     required_cols = ["运单号", "目的省份", "结算重量", "快递类型"]
     missing = [c for c in required_cols if c not in df_express.columns]
     if missing:
-        print(f"❌ 清洗合并账单缺少关键列：{missing}")
-        exit(1)
+        raise RuntimeError(f"清洗合并账单缺少关键列：{missing}")
     print(f"✅ 成功读取清洗合并总账单：共 {len(df_express)} 条记录")
 
     # 查找订单文件
@@ -212,20 +201,18 @@ def load_source_data():
         if f.startswith(settings.ORDER_FILE_PREFIX)
     ]
     if not order_files:
-        print(f"❌ 未找到订单匹配文件，请先运行 order_db.py")
-        exit(1)
+        raise RuntimeError("未找到订单匹配文件，请先运行 order_db.py")
 
     latest_order_file = sorted(order_files)[-1]
     order_file_path   = os.path.join(OUTPUT_FOLDER, latest_order_file)
     df_order = read_excel(order_file_path)
     if df_order is None:
-        exit(1)
+        raise RuntimeError("订单匹配文件读取失败")
 
     required_cols_order = ["运单号", "所属团队"]
     missing_order = [c for c in required_cols_order if c not in df_order.columns]
     if missing_order:
-        print(f"❌ 订单匹配文件缺少关键列：{missing_order}")
-        exit(1)
+        raise RuntimeError(f"订单匹配文件缺少关键列：{missing_order}")
     print(f"✅ 成功读取订单匹配文件：{latest_order_file}，共 {len(df_order)} 条记录")
 
     return df_express, df_order
@@ -320,7 +307,7 @@ def run_reconciliation():
         matched_data = match_team_by_waybill()
     except Exception as e:
         print(f"\n❌ 程序执行失败：{str(e)}")
-        exit(1)
+        raise
 
     if matched_data is not None and len(matched_data) > 0:
         export_styled_result(matched_data)

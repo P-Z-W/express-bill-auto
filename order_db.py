@@ -44,20 +44,54 @@ def connect_db():
         return None
 
 
+def _get_dynamic_dates():
+    """
+    V3.2：运行时动态计算 SQL 日期范围
+    优先读取 config/settings_override.json 中的扩展天数
+    fallback 到 settings.py 默认值
+    修复原因：settings.py 在进程启动时固化日期，override 文件的修改对当次运行无效
+    """
+    import json as _json
+    from datetime import datetime, timedelta
+
+    before = settings.SQL_EXTEND_DAYS_BEFORE
+    after  = settings.SQL_EXTEND_DAYS_AFTER
+
+    override_path = os.path.join("config", "settings_override.json")
+    try:
+        with open(override_path, "r", encoding="utf-8") as f:
+            override = _json.load(f)
+        before = override.get("SQL_EXTEND_DAYS_BEFORE", before)
+        after  = override.get("SQL_EXTEND_DAYS_AFTER",  after)
+    except Exception:
+        pass
+
+    today             = datetime.now()
+    first_of_month    = today.replace(day=1)
+    last_month_day    = first_of_month - timedelta(days=1)
+    process_first_day = last_month_day.replace(day=1)
+    process_last_day  = first_of_month - timedelta(days=1)
+
+    start_date = (process_first_day - timedelta(days=before)).strftime("%Y-%m-%d 00:00:00")
+    end_date   = (process_last_day  + timedelta(days=after)).strftime("%Y-%m-%d 23:59:59")
+    return start_date, end_date
+
+
 def load_sql_from_config():
     """
     从 config/SQL-config.txt 读取SQL模板
-    自动将 {START_DATE} / {END_DATE} 替换为本次处理月份的动态日期范围
+    V3.2：改为每次运行时动态计算日期范围，settings_override.json 的修改立即生效
     """
     try:
         with open(SQL_FILE_PATH, "r", encoding="utf-8") as f:
             sql = f.read().strip()
 
-        sql = sql.replace("{START_DATE}", settings.SQL_START_DATE)
-        sql = sql.replace("{END_DATE}",   settings.SQL_END_DATE)
+        start_date, end_date = _get_dynamic_dates()
+        sql = sql.replace("{START_DATE}", start_date)
+        sql = sql.replace("{END_DATE}",   end_date)
 
         print("✅ 成功读取外部SQL配置文件")
-        print(f"   📅 数据捞取范围：{settings.SQL_START_DATE} ~ {settings.SQL_END_DATE}")
+        print(f"   📅 数据捞取范围：{start_date} ~ {end_date}")
         return sql
     except Exception as e:
         print(f"❌ 读取SQL文件失败：{str(e)}")

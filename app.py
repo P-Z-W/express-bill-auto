@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-毅播快递对账系统 - Web服务主程序 V3.1
+毅播快递对账系统 - Web服务主程序 V3.2
 ==================================================
-【V3.1 新增功能】
+【V3.2 BugFix】
+  1. order_db：settings_override.json 扩展天数运行时动态生效
+  2. order_matching：exit(1) 改为 raise，防止 Flask 进程崩溃
+  3. LogCapture：加线程 ID 过滤，修复 sys.stdout 多线程竞态
+
+【V3.1 新增功能（保留）】
   方向二：看板数据增强
     1. /stats/<month> 新增 express_stats 字段（按快递类型费用统计）
     2. /stats/<month> 新增 mom_change 字段（与上月费用环比）
@@ -203,18 +208,24 @@ def write_log_footer(log_file, success, start_time):
 
 # ====================== LogCapture ======================
 class LogCapture(io.StringIO):
-    def __init__(self, real_stdout, log_file=None):
+    def __init__(self, real_stdout, log_file=None, task_thread_id=None):
         super().__init__()
-        self._real_stdout = real_stdout
-        self._log_file    = log_file
+        self._real_stdout    = real_stdout
+        self._log_file       = log_file
+        self._task_thread_id = task_thread_id
 
     def write(self, msg):
-        if msg.strip():
+        # V3.2：只捕获任务线程的输出，其他 Flask 请求线程的 print 不混入日志队列
+        is_task = (
+            self._task_thread_id is None or
+            threading.current_thread().ident == self._task_thread_id
+        )
+        if msg.strip() and is_task:
             log_queue.put(msg.strip())
-            self._real_stdout.write(msg + "\n")
             if self._log_file:
                 self._log_file.write(msg.strip() + "\n")
                 self._log_file.flush()
+        self._real_stdout.write(msg)
         return len(msg)
 
     def flush(self):
@@ -235,7 +246,7 @@ def run_task(data_folder, output_folder, process_month):
     write_log_header(log_file, process_month, run_count)
 
     real_stdout = sys.stdout
-    sys.stdout  = LogCapture(real_stdout, log_file)
+    sys.stdout  = LogCapture(real_stdout, log_file, task_thread_id=threading.current_thread().ident)
 
     try:
         push_log(f"🚀 开始处理 {process_month} 月份数据")
@@ -984,7 +995,7 @@ def settings_save():
 # ====================== 启动 ======================
 if __name__ == "__main__":
     print("=" * 60)
-    print("  YiBo Express Bill System V3.1")
+    print("  YiBo Express Bill System V3.2")
     print("  LAN Access:   http://[LAN IP]:5000")
     print("  Local Access: http://127.0.0.1:5000")
     print("=" * 60)
