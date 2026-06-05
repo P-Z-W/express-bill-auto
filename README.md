@@ -1,6 +1,6 @@
-# 毅播云仓内部管理平台 V4.0
+# 毅播云仓内部管理平台 V4.1
 
-基于 Flask 的云仓内部后台系统，当前已完成快递对账模块，支持局域网 Web 操作。
+基于 Flask 多模块架构的云仓内部后台系统，当前已完成快递对账模块，支持局域网 Web 操作。
 
 ---
 
@@ -101,10 +101,11 @@ yibo-backoffice/
 
 ## 技术栈
 
-- Python + Flask
+- Python + Flask（Blueprint 多模块架构）
 - pandas + openpyxl
 - 阿里云 MySQL（pymysql）
-- 多页面 HTML 模板 + SSE 实时日志
+- Jinja2 模板 + SSE 实时日志推送
+- 原生 JS + Chart.js（无前端框架依赖）
 
 ---
 
