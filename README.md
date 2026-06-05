@@ -112,6 +112,7 @@ yibo-backoffice/
 
 | 版本 | 说明 |
 |---|---|
+| V4.1 | UI 全面重设计：左侧导航栏、SVG 图标、步骤时间线、骨架屏加载 |
 | V4.0 | 多模块架构重构，拆分 core/ modules/，新增 storage/finance 占位模块 |
 | V3.3 | 向量化计算性能优化 |
 | V3.2 | settings_override 动态生效、exit(1) 防崩溃、LogCapture 线程隔离 |
