@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-毅播快递对账系统 - Web服务主程序 V3.3
+毅播云仓内部管理平台 - Web服务主程序 V3.3
 ==================================================
 【V3.3 性能优化】
   1. order_matching：apply(axis=1) 改为 np.select + 向量化计算，大幅提速
@@ -999,7 +999,7 @@ def settings_save():
 # ====================== 启动 ======================
 if __name__ == "__main__":
     print("=" * 60)
-    print("  YiBo Express Bill System V3.3")
+    print("  YiBo BackOffice Platform V3.3")
     print("  LAN Access:   http://[LAN IP]:5000")
     print("  Local Access: http://127.0.0.1:5000")
     print("=" * 60)
