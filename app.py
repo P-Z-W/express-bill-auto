@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-毅播快递对账系统 - Web服务主程序 V3.2
+毅播快递对账系统 - Web服务主程序 V3.3
 ==================================================
-【V3.2 BugFix】
+【V3.3 性能优化】
+  1. order_matching：apply(axis=1) 改为 np.select + 向量化计算，大幅提速
+  2. split_bill_by_team：iterrows 改为向量化求和，逐元素 round(2) 精度不变
+
+【V3.2 BugFix（保留）】
   1. order_db：settings_override.json 扩展天数运行时动态生效
   2. order_matching：exit(1) 改为 raise，防止 Flask 进程崩溃
   3. LogCapture：加线程 ID 过滤，修复 sys.stdout 多线程竞态
@@ -995,7 +999,7 @@ def settings_save():
 # ====================== 启动 ======================
 if __name__ == "__main__":
     print("=" * 60)
-    print("  YiBo Express Bill System V3.2")
+    print("  YiBo Express Bill System V3.3")
     print("  LAN Access:   http://[LAN IP]:5000")
     print("  Local Access: http://127.0.0.1:5000")
     print("=" * 60)

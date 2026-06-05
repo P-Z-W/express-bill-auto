@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-快递订单对账匹配模块（V2.4 稳定版）
+快递订单对账匹配模块（V3.3）
 ==================================================
 【功能说明】
   1. 运单号匹配 → 回填所属团队
@@ -25,6 +25,7 @@
 ==================================================
 """
 import pandas as pd
+import numpy as np
 import os
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -178,6 +179,82 @@ def calculate_single_fee(row, price_dict):
     return round(fee, 2)
 
 
+def calculate_fees_vectorized(df, price_dict):
+    """向量化计算应付金额，逐元素 round(2) 与行级计算完全一致"""
+    result = pd.Series("", index=df.index, dtype=object)
+
+    for express_type in ["申通", "中通"]:
+        charge_price = price_dict["充单价"][express_type]
+        prov_map     = price_dict[express_type]
+
+        for calc_method in ["单票", "新西1-3公斤"]:
+            mask = (
+                (df["快递类型"].astype(str).str.strip() == express_type) &
+                (df["实际计算方式"] == calc_method)
+            )
+            if not mask.any():
+                continue
+
+            sub        = df[mask]
+            dest_provs = sub["目的省份"].astype(str).str.strip()
+
+            # 与原行级逻辑一致：取第一个 startswith 命中的 key
+            unique_provs = dest_provs.unique()
+            prov_to_key  = {}
+            for p in unique_provs:
+                for k in prov_map:
+                    if p.startswith(k):
+                        prov_to_key[p] = k
+                        break
+
+            matched_keys = dest_provs.map(prov_to_key)
+
+            no_match = matched_keys.isna()
+            if no_match.any():
+                for idx in sub[no_match].index:
+                    print(f"⚠️  运单号{df.loc[idx, '运单号']}：{express_type}无'{df.loc[idx, '目的省份']}'省份报价，金额置0")
+                result[sub[no_match].index] = round(0.00, 2)
+
+            ok = ~no_match
+            if not ok.any():
+                continue
+
+            sub_ok  = sub[ok]
+            keys_ok = matched_keys[ok]
+            weights = pd.to_numeric(sub_ok["结算重量"], errors="coerce")
+
+            bad_w = weights.isna()
+            if bad_w.any():
+                result[sub_ok[bad_w].index] = round(0.00, 2)
+
+            good = ~bad_w
+            if not good.any():
+                continue
+
+            sub_g   = sub_ok[good]
+            keys_g  = keys_ok[good]
+            w_g     = weights[good]
+
+            xuchong     = keys_g.map(lambda k: prov_map[k]["续重单价"])
+            fee_over3kg = keys_g.map(lambda k: prov_map[k]["面单费_超3kg"])
+            fee_3kg_in  = keys_g.map(lambda k: prov_map[k]["面单费_3kg内"])
+
+            if calc_method == "单票":
+                fees = (w_g * xuchong + (fee_over3kg - charge_price)).round(2)
+            else:
+                fees = (fee_3kg_in + w_g * xuchong - charge_price).round(2)
+
+            result[sub_g.index] = fees
+
+    mask_other = (
+        ~df["快递类型"].astype(str).str.strip().isin(["申通", "中通"]) &
+        (df["实际计算方式"] != "全国均重")
+    )
+    result[mask_other] = round(0.00, 2)
+
+    return result
+
+
 # ====================== 源数据读取 ======================
 def load_source_data():
     """读取清洗合并账单 + 订单匹配文件"""
@@ -240,8 +317,13 @@ def match_team_by_waybill():
 
     # 批量判断计费模式
     print("🔄 正在批量判断计费模式...")
-    df_express["实际计算方式"] = df_express.apply(
-        lambda row: get_calc_type(row["目的省份"], row["结算重量"]), axis=1
+    _prov   = df_express["目的省份"].astype(str).str.strip()
+    _weight = pd.to_numeric(df_express["结算重量"], errors="coerce")
+    _xinxi  = _prov.str.startswith("新疆") | _prov.str.startswith("西藏")
+    df_express["实际计算方式"] = np.select(
+        [_weight >= 3, _xinxi],
+        ["单票", "新西1-3公斤"],
+        default="全国均重"
     )
     method_dist = df_express["实际计算方式"].value_counts()
     for method, count in method_dist.items():
@@ -250,9 +332,7 @@ def match_team_by_waybill():
     # 批量计算金额
     print("🔄 正在加载报价表并计算应付金额...")
     price_dict = load_price_config()
-    df_express["单票应付金额"] = df_express.apply(
-        lambda row: calculate_single_fee(row, price_dict), axis=1
-    )
+    df_express["单票应付金额"] = calculate_fees_vectorized(df_express, price_dict)
 
     matched   = len(df_express[df_express["所属团队"] != "未匹配"])
     unmatched = len(df_express) - matched

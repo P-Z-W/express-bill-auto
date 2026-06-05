@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-客户对账账单拆分 V2.4 稳定版
+客户对账账单拆分 V3.3
 ==================================================
 【核心功能】
 1. 按团队拆分账单，自动生成标准化Excel格式
@@ -170,10 +170,8 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 row_fee        = round(single_fee * order_cnt, 2)
                 total_fee_all += row_fee
             elif calc_name in ("单票", "新西1-3公斤"):
-                fee_sum = sum(
-                    round((max(float(r["结算重量"]) - use_avg, 0.0) / 0.1) * use_fee, 2)
-                    for _, r in filter_df.iterrows() if pd.notna(r["结算重量"])
-                )
+                _w = pd.to_numeric(filter_df["结算重量"], errors="coerce").dropna()
+                fee_sum        = ((_w - use_avg).clip(lower=0) / 0.1 * use_fee).round(2).sum()
                 row_fee        = round(fee_sum, 2)
                 total_fee_all += row_fee
             elif calc_name == "新西1kg内（包1%）":
@@ -209,10 +207,8 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 row_fee        = round(single_fee * order_cnt, 2)
                 total_fee_all += row_fee
             elif calc_name in ("单票", "新西1-3公斤"):
-                fee_sum = sum(
-                    round((max(float(r["结算重量"]) - st_avg_all, 0.0) / 0.1) * st_fee_all, 2)
-                    for _, r in filter_df.iterrows() if pd.notna(r["结算重量"])
-                )
+                _w = pd.to_numeric(filter_df["结算重量"], errors="coerce").dropna()
+                fee_sum        = ((_w - st_avg_all).clip(lower=0) / 0.1 * st_fee_all).round(2).sum()
                 row_fee        = round(fee_sum, 2)
                 total_fee_all += row_fee
             elif calc_name == "新西1kg内（包1%）":
