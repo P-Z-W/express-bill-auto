@@ -3,11 +3,11 @@
 
 {% block extra_head %}
 <style>
-  .run-grid { display:grid; grid-template-columns:380px 1fr; gap:20px; }
+  .run-grid { display:grid; grid-template-columns:360px 1fr; gap:20px; }
 
   .upload-item { margin-bottom:16px; }
-  .upload-label { font-size:13px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
-  .upload-dot { width:6px; height:6px; border-radius:50%; background:var(--border); transition:background 0.3s; }
+  .upload-label { font-size:12px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .upload-dot { width:6px; height:6px; border-radius:50%; background:var(--border); transition:background 0.3s; flex-shrink:0; }
   .upload-dot.done { background:var(--accent2); }
   .upload-box {
     border:1.5px dashed var(--border); border-radius:8px; padding:14px 16px;
@@ -17,66 +17,115 @@
   .upload-box:hover { border-color:var(--accent); background:rgba(79,142,247,0.04); }
   .upload-box.uploaded { border-color:var(--accent2); border-style:solid; }
   .upload-box input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
-  .upload-filename { font-family:var(--mono); font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+  .upload-filename { font-family:var(--mono); font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px; }
   .upload-filename.placeholder { color:var(--muted); }
+  .upload-file-icon { color:var(--muted); flex-shrink:0; }
   .upload-msg { font-size:12px; margin-top:6px; padding:6px 10px; border-radius:6px; font-family:var(--mono); display:none; }
   .upload-msg.show { display:block; }
   .upload-msg.ok  { background:rgba(61,214,140,0.1); color:var(--accent2); }
   .upload-msg.err { background:rgba(247,95,95,0.1);  color:var(--danger); }
 
   .run-btn {
-    width:100%; margin-top:24px; padding:14px;
+    width:100%; margin-top:20px; padding:13px;
     background:var(--accent); color:#fff; border:none; border-radius:8px;
-    font-size:15px; font-weight:600; font-family:var(--sans);
+    font-size:14px; font-weight:600; font-family:var(--sans);
     cursor:pointer; transition:all 0.2s;
+    display:flex; align-items:center; justify-content:center; gap:8px;
   }
   .run-btn:hover:not(:disabled) { background:#3a7ae0; }
   .run-btn:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; }
   .dl-btn {
-    width:100%; margin-top:12px; padding:12px; background:transparent;
+    width:100%; margin-top:10px; padding:11px; background:transparent;
     color:var(--accent2); border:1.5px solid var(--accent2); border-radius:8px;
-    font-size:14px; font-weight:500; cursor:pointer; display:none;
+    font-size:13px; font-weight:500; cursor:pointer; display:none;
     text-decoration:none; text-align:center;
   }
   .dl-btn:hover { background:rgba(61,214,140,0.08); }
   .dl-btn.show { display:block; }
 
-  .progress-section { }
   .log-status { display:flex; align-items:center; gap:8px; margin-bottom:16px; }
-  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--border); }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--border); flex-shrink:0; }
   .status-dot.running { background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
   .status-dot.done    { background:var(--accent2); }
   .status-dot.error   { background:var(--danger); }
   @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
   .status-text { font-size:12px; color:var(--muted); font-family:var(--mono); }
 
-  .progress-wrap { margin-bottom:20px; }
-  .progress-bar-bg { width:100%; height:8px; background:var(--border); border-radius:4px; overflow:hidden; margin-bottom:8px; }
-  .progress-bar-fill { height:100%; background:var(--accent); border-radius:4px; transition:width 0.6s ease; width:0%; }
+  .progress-wrap { margin-bottom:24px; }
+  .progress-bar-bg { width:100%; height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:6px; }
+  .progress-bar-fill { height:100%; background:var(--accent); border-radius:3px; transition:width 0.6s ease; width:0%; }
   .progress-bar-fill.done  { background:var(--accent2); }
   .progress-bar-fill.error { background:var(--danger); }
-  .progress-pct { font-family:var(--mono); font-size:13px; color:var(--muted); text-align:right; }
+  .progress-pct { font-family:var(--mono); font-size:12px; color:var(--muted); text-align:right; }
 
-  .steps-wrap { display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
-  .step-item {
-    display:flex; align-items:center; gap:10px; padding:12px 16px;
-    border-radius:8px; background:#0a0c12; border:1px solid var(--border);
-    font-size:13px; transition:all 0.3s;
+  /* Timeline steps */
+  .steps-wrap {
+    position: relative;
+    padding-left: 32px;
+    margin-bottom: 20px;
   }
-  .step-item.active { border-color:var(--accent);  background:rgba(79,142,247,0.06); }
-  .step-item.done   { border-color:var(--accent2); background:rgba(61,214,140,0.06); }
-  .step-item.error  { border-color:var(--danger);  background:rgba(247,95,95,0.06); }
-  .step-icon { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+  .steps-wrap::before {
+    content: '';
+    position: absolute;
+    left: 9px; top: 16px; bottom: 16px;
+    width: 1px;
+    background: var(--border);
+  }
+  .step-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; border-radius: 8px;
+    border: 1px solid transparent;
+    font-size: 13px; transition: all 0.25s;
+    margin-bottom: 6px; position: relative;
+  }
+  .step-item::before {
+    content: '';
+    position: absolute;
+    left: -26px; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); background: var(--bg);
+    z-index: 1; transition: all 0.25s;
+  }
+  .step-item.active {
+    border-color: rgba(79,142,247,0.3);
+    background: rgba(79,142,247,0.05);
+  }
+  .step-item.active::before {
+    border-color: var(--accent); background: var(--accent);
+    box-shadow: 0 0 8px rgba(79,142,247,0.45);
+  }
+  .step-item.done {
+    border-color: rgba(61,214,140,0.25);
+    background: rgba(61,214,140,0.04);
+  }
+  .step-item.done::before {
+    border-color: var(--accent2); background: var(--accent2);
+  }
+  .step-item.error {
+    border-color: rgba(247,95,95,0.3);
+    background: rgba(247,95,95,0.05);
+  }
+  .step-item.error::before {
+    border-color: var(--danger); background: var(--danger);
+  }
+  /* hide legacy icon spans — state is shown via ::before */
+  .step-icon { display:none; }
   .step-text { color:var(--muted); }
   .step-item.active .step-text { color:var(--accent); }
   .step-item.done   .step-text { color:var(--accent2); }
   .step-item.error  .step-text { color:var(--danger); }
+
   .elapsed-text { font-family:var(--mono); font-size:12px; color:var(--muted); text-align:center; min-height:20px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-title">▶ 运行操作</div>
+<div class="page-title">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <path d="M5 3L15 9L5 15V3Z" fill="currentColor"/>
+  </svg>
+  运行操作
+</div>
 
 <div class="run-grid">
   <!-- 左侧：上传+运行 -->
@@ -90,7 +139,12 @@
       </div>
       <div class="upload-box" id="box-st">
         <span class="upload-filename placeholder" id="name-st">点击选择文件...</span>
-        <span style="font-size:18px">📄</span>
+        <span class="upload-file-icon">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M10 2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-6-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M10 2v6h6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </span>
         <input type="file" accept=".xlsx" onchange="uploadFile(this,'st')">
       </div>
       <div class="upload-msg" id="msg-st"></div>
@@ -103,18 +157,26 @@
       </div>
       <div class="upload-box" id="box-zt">
         <span class="upload-filename placeholder" id="name-zt">点击选择文件...</span>
-        <span style="font-size:18px">📄</span>
+        <span class="upload-file-icon">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M10 2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-6-6Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M10 2v6h6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </span>
         <input type="file" accept=".xlsx" onchange="uploadFile(this,'zt')">
       </div>
       <div class="upload-msg" id="msg-zt"></div>
     </div>
 
-    <button class="run-btn" id="run-btn" onclick="startRun()">▶ 开始运行</button>
-    <a class="dl-btn" id="dl-btn" href="/download">⬇ 下载结果 ZIP</a>
+    <button class="run-btn" id="run-btn" onclick="startRun()">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M3 2L11 6.5L3 11V2Z" fill="white"/></svg>
+      开始运行
+    </button>
+    <a class="dl-btn" id="dl-btn" href="/download">下载结果 ZIP</a>
   </div>
 
   <!-- 右侧：进度 -->
-  <div class="card progress-section">
+  <div class="card">
     <div class="card-title">运行进度</div>
     <div class="log-status">
       <div class="status-dot" id="status-dot"></div>
@@ -127,10 +189,10 @@
       <div class="progress-pct" id="progress-pct">0%</div>
     </div>
     <div class="steps-wrap">
-      <div class="step-item" id="step-1"><span class="step-icon" id="icon-1">⬜</span><span class="step-text">第一步：下载订单数据</span></div>
-      <div class="step-item" id="step-2"><span class="step-icon" id="icon-2">⬜</span><span class="step-text">第二步：合并快递账单</span></div>
-      <div class="step-item" id="step-3"><span class="step-icon" id="icon-3">⬜</span><span class="step-text">第三步：运单匹配对账</span></div>
-      <div class="step-item" id="step-4"><span class="step-icon" id="icon-4">⬜</span><span class="step-text">第四步：按团队拆分账单</span></div>
+      <div class="step-item" id="step-1"><span class="step-icon" id="icon-1"></span><span class="step-text">第一步：下载订单数据</span></div>
+      <div class="step-item" id="step-2"><span class="step-icon" id="icon-2"></span><span class="step-text">第二步：合并快递账单</span></div>
+      <div class="step-item" id="step-3"><span class="step-icon" id="icon-3"></span><span class="step-text">第三步：运单匹配对账</span></div>
+      <div class="step-item" id="step-4"><span class="step-icon" id="icon-4"></span><span class="step-text">第四步：按团队拆分账单</span></div>
     </div>
     <div class="elapsed-text" id="elapsed-text"></div>
   </div>
@@ -151,7 +213,7 @@
     const dotEl  = document.getElementById(`dot-${type}`);
     nameEl.textContent = file.name;
     nameEl.classList.remove('placeholder');
-    showMsg(msgEl, '⏳ 上传中...', '');
+    showMsg(msgEl, '上传中...', '');
     const fd = new FormData();
     fd.append('file', file);
     try {
@@ -165,7 +227,7 @@
         showMsg(msgEl, data.msg, 'err');
       }
     } catch(e) {
-      showMsg(msgEl, '❌ 上传失败，请重试', 'err');
+      showMsg(msgEl, '上传失败，请重试', 'err');
     }
   }
 
@@ -180,7 +242,7 @@
     resetProgress();
     dlBtn.classList.remove('show');
     btn.disabled    = true;
-    btn.textContent = '⏳ 运行中...';
+    btn.textContent = '运行中...';
     setStatus('running', '任务运行中...');
     try {
       const res  = await fetch('/run', { method:'POST' });
@@ -188,7 +250,7 @@
       if (!data.ok) {
         setStatus('error', '启动失败：' + data.msg);
         btn.disabled    = false;
-        btn.textContent = '▶ 开始运行';
+        btn.textContent = '开始运行';
         return;
       }
       listenLogs();
@@ -196,7 +258,7 @@
     } catch(e) {
       setStatus('error', '网络错误');
       btn.disabled    = false;
-      btn.textContent = '▶ 开始运行';
+      btn.textContent = '开始运行';
     }
   }
 
@@ -217,18 +279,16 @@
     document.getElementById('progress-fill').style.width = pct + '%';
     document.getElementById('progress-pct').textContent  = pct + '%';
     for (let i = 1; i <= 4; i++) {
-      const el   = document.getElementById(`step-${i}`);
-      const icon = document.getElementById(`icon-${i}`);
+      const el = document.getElementById(`step-${i}`);
       el.className = 'step-item';
-      if (i <= step)              { el.classList.add('done');   icon.textContent = '✅'; }
-      else if (i === step+1 && step < 4) { el.classList.add('active'); icon.textContent = '🔄'; }
-      else                        { icon.textContent = '⬜'; }
+      if (i <= step)                        el.classList.add('done');
+      else if (i === step + 1 && step < 4)  el.classList.add('active');
     }
   }
 
   function markStepError(step) {
     const el = document.getElementById(`step-${step}`);
-    if (el) { el.className = 'step-item error'; document.getElementById(`icon-${step}`).textContent = '❌'; }
+    if (el) el.className = 'step-item error';
     document.getElementById('progress-fill').classList.add('error');
   }
 
@@ -238,8 +298,7 @@
     document.getElementById('progress-pct').textContent  = '0%';
     document.getElementById('elapsed-text').textContent  = '';
     for (let i = 1; i <= 4; i++) {
-      document.getElementById(`step-${i}`).className  = 'step-item';
-      document.getElementById(`icon-${i}`).textContent = '⬜';
+      document.getElementById(`step-${i}`).className = 'step-item';
     }
   }
 
@@ -259,15 +318,15 @@
     const btn   = document.getElementById('run-btn');
     const dlBtn = document.getElementById('dl-btn');
     btn.disabled    = false;
-    btn.textContent = '▶ 再次运行';
+    btn.textContent = '再次运行';
     fetch('/status').then(r => r.json()).then(data => {
       const elapsed = data.result && data.result.elapsed ? data.result.elapsed : '';
       if (data.result && data.result.success) {
-        setStatus('done', elapsed ? `运行完成 ✅  耗时：${elapsed}` : '运行完成 ✅');
+        setStatus('done', elapsed ? `运行完成  耗时：${elapsed}` : '运行完成');
         dlBtn.classList.add('show');
         updateProgress(4);
         document.getElementById('progress-fill').classList.add('done');
-        document.getElementById('elapsed-text').textContent = elapsed ? `⏱ 本次耗时：${elapsed}` : '';
+        document.getElementById('elapsed-text').textContent = elapsed ? `耗时：${elapsed}` : '';
       } else {
         setStatus('error', '运行异常，请查看 run.log');
         document.getElementById('progress-fill').classList.add('error');
@@ -276,9 +335,9 @@
   }
 
   function setStatus(state, text) {
-    document.getElementById('status-dot').className   = 'status-dot ' + state;
-    document.getElementById('status-text').textContent = text;
-    document.getElementById('topbar-dot').className   = 'topbar-dot ' + state;
+    document.getElementById('status-dot').className    = 'status-dot ' + state;
+    document.getElementById('status-text').textContent  = text;
+    document.getElementById('topbar-dot').className    = 'topbar-dot ' + state;
     document.getElementById('topbar-status-text').textContent = text;
   }
 </script>

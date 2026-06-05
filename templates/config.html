@@ -54,15 +54,22 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-title">⚙️ 系统配置</div>
+<div class="page-title">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <path d="M2 6.5h14M2 11.5h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    <circle cx="6.5" cy="6.5" r="2.2" fill="currentColor"/>
+    <circle cx="11.5" cy="11.5" r="2.2" fill="currentColor"/>
+  </svg>
+  系统配置
+</div>
 
 <div class="card">
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('express')">🚚 快递管理</button>
+    <button class="tab-btn active" onclick="switchTab('express')">快递管理</button>
     <button class="tab-btn" onclick="switchTab('st')">申通报价</button>
     <button class="tab-btn" onclick="switchTab('zt')">中通报价</button>
     <button class="tab-btn" onclick="switchTab('charge')">充单价格</button>
-    <button class="tab-btn" onclick="switchTab('run-params')">⏱ 运行参数</button>
+    <button class="tab-btn" onclick="switchTab('run-params')">运行参数</button>
   </div>
 
   <!-- 快递管理 -->
@@ -70,7 +77,7 @@
     <div class="card-title">快递公司管理</div>
     <div id="express-list"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
     <div class="save-bar">
-      <button class="btn btn-primary" onclick="saveExpress()">💾 保存快递配置</button>
+      <button class="btn btn-primary" onclick="saveExpress()">保存快递配置</button>
       <span class="save-msg" id="save-msg-express"></span>
     </div>
   </div>
@@ -97,7 +104,7 @@
 
   <!-- 价格保存按钮（申通/中通/充单共用） -->
   <div class="save-bar" id="price-save-bar" style="display:none;">
-    <button class="btn btn-primary" onclick="savePrice()">💾 保存价格修改</button>
+    <button class="btn btn-primary" onclick="savePrice()">保存价格修改</button>
     <span class="save-msg" id="save-msg-price"></span>
   </div>
 
@@ -126,7 +133,7 @@
       </div>
     </div>
     <div class="save-bar">
-      <button class="btn btn-primary" onclick="saveRunParams()">💾 保存参数</button>
+      <button class="btn btn-primary" onclick="saveRunParams()">保存参数</button>
       <span class="save-msg" id="save-msg-rp"></span>
     </div>
   </div>
@@ -138,7 +145,6 @@
 let priceData   = null;
 let expressData = null;
 
-// Tab 切换（支持6个Tab）
 const TAB_KEYS = ['express','st','zt','charge','run-params'];
 const TAB_IDS  = ['tab-express','tab-st','tab-zt','tab-charge','tab-run-params'];
 function switchTab(tab) {
@@ -150,7 +156,7 @@ function switchTab(tab) {
   });
   const priceSaveBar = document.getElementById('price-save-bar');
   priceSaveBar.style.display = ['st','zt','charge'].includes(tab) ? 'flex' : 'none';
-  if (tab === 'run-params')  loadRunParams();
+  if (tab === 'run-params') loadRunParams();
 }
 
 // ====================== 快递配置 ======================
@@ -184,9 +190,9 @@ async function saveExpress() {
   try {
     const res  = await fetch('/express/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ express_list: expressData }) });
     const data = await res.json();
-    msgEl.textContent = data.ok ? '✅ 保存成功' : '❌ ' + data.msg;
+    msgEl.textContent = data.ok ? '保存成功' : '保存失败：' + data.msg;
     msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
-  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+  } catch(e) { msgEl.textContent = '保存失败'; msgEl.style.color = 'var(--danger)'; }
   setTimeout(() => { msgEl.textContent = ''; }, 3000);
 }
 
@@ -232,7 +238,6 @@ function buildPriceRow(prefix, i, province, fee3, feeOver, unit) {
   </tr>`;
 }
 
-// 新增省份行
 function addPriceRow(prefix) {
   const tbody = document.getElementById(`tbody-${prefix}`);
   if (!tbody) return;
@@ -243,19 +248,17 @@ function addPriceRow(prefix) {
   tbody.appendChild(tr);
 }
 
-// 删除省份行
 function delPriceRow(prefix, idx) {
   const row = document.getElementById(`price-row-${prefix}-${idx}`);
   if (row) row.remove();
 }
 
-// 收集当前表格数据（含新增/删除后的结果）
 function collectPriceRows(prefix) {
   const rows = [];
   document.querySelectorAll(`[data-prefix="${prefix}"][data-field="province"]`).forEach(el => {
     const i    = el.dataset.idx;
     const prov = el.value.trim();
-    if (!prov) return; // 跳过空省份
+    if (!prov) return;
     rows.push({
       province:    prov,
       fee_3kg:     parseFloat(document.querySelector(`[data-prefix="${prefix}"][data-idx="${i}"][data-field="fee_3kg"]`)?.value || 0),
@@ -280,10 +283,10 @@ async function savePrice() {
       body: JSON.stringify({ shentong: collectPriceRows('st'), zhongtong: collectPriceRows('zt'), charge: chargeData })
     });
     const data = await res.json();
-    msgEl.textContent = data.ok ? '✅ 保存成功' : '❌ ' + data.msg;
+    msgEl.textContent = data.ok ? '保存成功' : '保存失败：' + data.msg;
     msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
-    if (data.ok) loadPrice(); // 刷新显示
-  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+    if (data.ok) loadPrice();
+  } catch(e) { msgEl.textContent = '保存失败'; msgEl.style.color = 'var(--danger)'; }
   setTimeout(() => { msgEl.textContent = ''; }, 3000);
 }
 
@@ -295,11 +298,11 @@ async function loadRunParams() {
     const res  = await fetch('/settings/get');
     const data = await res.json();
     if (!data.ok) return;
-    document.getElementById('rp-before').value        = data.extend_days_before;
-    document.getElementById('rp-after').value         = data.extend_days_after;
-    document.getElementById('rp-process-month').textContent = data.process_month   || '—';
-    document.getElementById('rp-start').textContent         = data.sql_start_date  || '—';
-    document.getElementById('rp-end').textContent           = data.sql_end_date    || '—';
+    document.getElementById('rp-before').value               = data.extend_days_before;
+    document.getElementById('rp-after').value                = data.extend_days_after;
+    document.getElementById('rp-process-month').textContent  = data.process_month  || '—';
+    document.getElementById('rp-start').textContent          = data.sql_start_date || '—';
+    document.getElementById('rp-end').textContent            = data.sql_end_date   || '—';
     rpLoaded = true;
   } catch(e) {}
 }
@@ -313,10 +316,10 @@ async function saveRunParams() {
   try {
     const res  = await fetch('/settings/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
     const data = await res.json();
-    msgEl.textContent = data.ok ? '✅ ' + data.msg : '❌ ' + data.msg;
+    msgEl.textContent = data.ok ? data.msg : '保存失败：' + data.msg;
     msgEl.style.color = data.ok ? 'var(--accent2)' : 'var(--danger)';
-    if (data.ok) rpLoaded = false; // 下次重新加载
-  } catch(e) { msgEl.textContent = '❌ 保存失败'; msgEl.style.color = 'var(--danger)'; }
+    if (data.ok) rpLoaded = false;
+  } catch(e) { msgEl.textContent = '保存失败'; msgEl.style.color = 'var(--danger)'; }
   setTimeout(() => { msgEl.textContent = ''; }, 3000);
 }
 

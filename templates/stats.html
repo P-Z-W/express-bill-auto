@@ -14,7 +14,7 @@
   .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:20px; }
   .chart-box { background:#0a0c12; border-radius:8px; padding:16px; }
   .chart-box.full { grid-column:1/-1; }
-  .chart-title { font-size:11px; color:var(--muted); margin-bottom:12px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; }
+  .chart-title { font-size:10px; color:var(--muted); margin-bottom:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; }
 
   .filter-tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
   .filter-tab { font-size:12px; padding:5px 12px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; transition:all 0.2s; }
@@ -43,7 +43,6 @@
   .unmatched-stat .u-label { font-size:11px; color:var(--muted); margin-bottom:6px; }
   .unmatched-stat .u-value { font-size:22px; font-weight:600; font-family:var(--mono); }
 
-  /* 异常运单 */
   .anomaly-summary { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
   .anomaly-badge {
     display:flex; align-items:center; gap:6px;
@@ -59,17 +58,13 @@
   .anomaly-dot.mid  { background:var(--warn); }
 
   .anomaly-list { display:flex; flex-direction:column; gap:10px; }
-  .anomaly-item {
-    border-radius:8px; border:1px solid var(--border);
-    overflow:hidden; transition:border-color 0.2s;
-  }
+  .anomaly-item { border-radius:8px; border:1px solid var(--border); overflow:hidden; transition:border-color 0.2s; }
   .anomaly-item.high { border-color:rgba(247,95,95,0.3); }
   .anomaly-item.mid  { border-color:rgba(247,149,79,0.3); }
   .anomaly-header {
     display:flex; align-items:center; gap:10px;
     padding:10px 16px; cursor:pointer;
-    background:rgba(255,255,255,0.02);
-    user-select:none;
+    background:rgba(255,255,255,0.02); user-select:none;
   }
   .anomaly-header:hover { background:rgba(255,255,255,0.04); }
   .anomaly-type  { font-size:13px; font-weight:500; flex:1; }
@@ -79,24 +74,26 @@
   .anomaly-pct   { font-size:11px; color:var(--muted); font-family:var(--mono); margin-left:4px; }
   .anomaly-arrow { font-size:11px; color:var(--muted); transition:transform 0.2s; }
   .anomaly-arrow.open { transform:rotate(90deg); }
-  .anomaly-detail {
-    display:none; padding:12px 16px;
-    border-top:1px solid var(--border);
-    background:#0a0c12;
-  }
+  .anomaly-detail { display:none; padding:12px 16px; border-top:1px solid var(--border); background:#0a0c12; }
   .anomaly-detail.open { display:block; }
   .anomaly-label { font-size:11px; color:var(--muted); margin-bottom:8px; }
   .anomaly-samples { display:flex; flex-wrap:wrap; gap:6px; }
   .sample-tag {
     font-family:var(--mono); font-size:11px; padding:2px 8px;
-    border-radius:4px; background:var(--surface); border:1px solid var(--border);
-    color:var(--muted);
+    border-radius:4px; background:var(--surface); border:1px solid var(--border); color:var(--muted);
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-title">📊 统计报表</div>
+<div class="page-title">
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <rect x="2" y="10" width="3" height="6" rx="1" fill="currentColor"/>
+    <rect x="7" y="6" width="3" height="10" rx="1" fill="currentColor"/>
+    <rect x="12" y="2" width="3" height="14" rx="1" fill="currentColor"/>
+  </svg>
+  统计报表
+</div>
 
 <!-- 月份选择 -->
 <div class="month-selector">
@@ -110,28 +107,49 @@
 <!-- 图表区域 -->
 <div class="card">
   <div class="card-title" id="stats-title">数据统计报表</div>
-  <div id="stats-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  <div id="stats-area">
+    <div style="padding:4px 0;">
+      <div class="sk sk-block" style="margin-bottom:12px;"></div>
+      <div class="sk sk-text" style="width:60%;"></div>
+    </div>
+  </div>
 </div>
 
 <!-- 未匹配分析 -->
 <div class="card" style="margin-top:20px;">
   <div class="card-title" id="unmatched-title">未匹配运单分析</div>
-  <div id="unmatched-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  <div id="unmatched-area">
+    <div style="padding:4px 0;">
+      <div class="sk sk-block" style="margin-bottom:10px;height:48px;"></div>
+      <div class="sk sk-text" style="width:80%;"></div>
+    </div>
+  </div>
 </div>
 
-<!-- 异常运单分析 V3.2 -->
+<!-- 异常运单分析 -->
 <div class="card" style="margin-top:20px;">
   <div class="card-title" id="anomaly-title" style="display:flex;align-items:center;justify-content:space-between;">
-    <span>⚠️ 异常运单分析</span>
-    <a id="anomaly-dl-btn" style="display:none;" class="btn btn-outline btn-sm">⬇ 下载异常运单</a>
+    <span>异常运单分析</span>
+    <a id="anomaly-dl-btn" style="display:none;" class="btn btn-outline btn-sm">下载异常运单</a>
   </div>
-  <div id="anomaly-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  <div id="anomaly-area">
+    <div style="padding:4px 0;">
+      <div class="sk sk-text" style="width:50%;margin-bottom:10px;"></div>
+      <div class="sk sk-text" style="width:70%;"></div>
+    </div>
+  </div>
 </div>
 
 <!-- 对账结果预览 -->
 <div class="card" style="margin-top:20px;">
   <div class="card-title" id="preview-title">对账结果预览</div>
-  <div id="preview-area"><div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">加载中...</div></div>
+  <div id="preview-area">
+    <div style="padding:4px 0;">
+      <div class="sk sk-text" style="width:100%;margin-bottom:10px;"></div>
+      <div class="sk sk-text" style="width:95%;margin-bottom:10px;"></div>
+      <div class="sk sk-text" style="width:88%;"></div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -141,7 +159,7 @@ let chartLine = null, chartPie = null, chartBar = null;
 let previewState = { month:'', page:1, filter:'all', keyword:'' };
 let searchTimer  = null;
 
-// ⚠️ V3.0 BugFix：/history 现在是HTML页面路由，月份列表必须请求 /history/api
+// V3.0 BugFix: /history is the page route; month list must use /history/api
 async function initMonthSelect() {
   try {
     const res  = await fetch('/history/api');
@@ -161,7 +179,6 @@ async function initMonthSelect() {
     sel.value = targetMonth;
     loadAll(targetMonth);
   } catch(e) {
-    // 下拉初始化失败时，用当前月兜底直接加载
     loadAll('{{ process_month }}');
   }
 }
@@ -198,7 +215,7 @@ async function loadStats(month) {
       }).join('');
       summaryHtml = `
         <div style="margin-top:20px;">
-          <div class="chart-title">📋 团队费用汇总</div>
+          <div class="chart-title">团队费用汇总</div>
           <table class="preview-table">
             <thead><tr>
               <th>团队</th>
@@ -213,9 +230,9 @@ async function loadStats(month) {
 
     document.getElementById('stats-area').innerHTML = `
       <div class="charts-grid">
-        <div class="chart-box full"><div class="chart-title">📈 各月总费用趋势</div><canvas id="chart-line" height="80"></canvas></div>
-        <div class="chart-box"><div class="chart-title">🥧 ${month} 各团队费用占比</div><canvas id="chart-pie"></canvas></div>
-        <div class="chart-box"><div class="chart-title">📊 ${month} 各团队费用明细</div><canvas id="chart-bar"></canvas></div>
+        <div class="chart-box full"><div class="chart-title">各月总费用趋势</div><canvas id="chart-line" height="80"></canvas></div>
+        <div class="chart-box"><div class="chart-title">${month} 各团队费用占比</div><canvas id="chart-pie"></canvas></div>
+        <div class="chart-box"><div class="chart-title">${month} 各团队费用明细</div><canvas id="chart-bar"></canvas></div>
       </div>${summaryHtml}`;
 
     const colors  = ['#4f8ef7','#3dd68c','#f7954f','#f75f5f','#a78bfa','#34d399','#fb923c','#60a5fa','#f472b6','#facc15','#4ade80','#38bdf8'];
@@ -228,9 +245,9 @@ async function loadStats(month) {
       type: 'line',
       data: {
         labels: trend.map(t => t.month),
-        datasets: [{ label:'总费用（元）', data:trend.map(t => t.total), borderColor:'#4f8ef7', backgroundColor:'rgba(79,142,247,0.1)', borderWidth:2, pointRadius:4, pointBackgroundColor:'#4f8ef7', fill:true, tension:0.3 }]
+        datasets: [{ label:'总费用（元）', data:trend.map(t => t.total), borderColor:'#4f8ef7', backgroundColor:'rgba(79,142,247,0.08)', borderWidth:2, pointRadius:3, pointBackgroundColor:'#4f8ef7', fill:true, tension:0.35 }]
       },
-      options: { responsive:true, plugins:{ legend:{ labels:{ color:'#6b7099', font:{size:12} } } }, scales:{ x:{ticks:{color:'#6b7099'},grid:{color:'#2a2d3a'}}, y:{ticks:{color:'#6b7099'},grid:{color:'#2a2d3a'}} } }
+      options: { responsive:true, plugins:{ legend:{ labels:{ color:'#6b7099', font:{size:12} } } }, scales:{ x:{ticks:{color:'#6b7099'},grid:{color:'rgba(42,45,58,0.8)'}}, y:{ticks:{color:'#6b7099'},grid:{color:'rgba(42,45,58,0.8)'}} } }
     });
 
     if (chartPie) chartPie.destroy();
@@ -244,7 +261,7 @@ async function loadStats(month) {
     chartBar = new Chart(document.getElementById('chart-bar'), {
       type: 'bar',
       data: { labels:teams, datasets:[{ label:'费用（元）', data:amounts, backgroundColor:colors.slice(0, teams.length), borderRadius:4 }] },
-      options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ x:{ticks:{color:'#6b7099',maxRotation:30},grid:{color:'#2a2d3a'}}, y:{ticks:{color:'#6b7099'},grid:{color:'#2a2d3a'}} } }
+      options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ x:{ticks:{color:'#6b7099',maxRotation:30},grid:{color:'rgba(42,45,58,0.8)'}}, y:{ticks:{color:'#6b7099'},grid:{color:'rgba(42,45,58,0.8)'}} } }
     });
 
   } catch(e) {
@@ -252,9 +269,8 @@ async function loadStats(month) {
   }
 }
 
-// ── 异常运单分析（V3.2）────────────────────────────────────
 async function loadAnomalies(month) {
-  document.getElementById('anomaly-title').querySelector('span').textContent = `⚠️ 异常运单分析 — ${month}`;
+  document.getElementById('anomaly-title').querySelector('span').textContent = `异常运单分析 — ${month}`;
   const dlBtn = document.getElementById('anomaly-dl-btn');
   dlBtn.style.display = 'none';
   document.getElementById('anomaly-area').innerHTML =
@@ -266,15 +282,13 @@ async function loadAnomalies(month) {
 
     if (list.length === 0) {
       document.getElementById('anomaly-area').innerHTML =
-        '<div style="color:var(--accent2);font-size:13px;padding:12px;">✅ 未发现异常运单</div>';
+        '<div style="color:var(--accent2);font-size:13px;padding:12px;">未发现异常运单</div>';
       return;
     }
 
-    // 有异常才显示下载按钮
-    dlBtn.href         = `/anomaly/download/${month}`;
+    dlBtn.href          = `/anomaly/download/${month}`;
     dlBtn.style.display = 'inline-flex';
 
-    // 顶部概要徽章
     const badges = list.map(a => `
       <div class="anomaly-badge ${a.level}" onclick="toggleAnomaly('anomaly-detail-${a.type}', this)">
         <span class="anomaly-dot ${a.level}"></span>
@@ -282,7 +296,6 @@ async function loadAnomalies(month) {
         <strong>${a.count}</strong> 条
       </div>`).join('');
 
-    // 每条异常展开卡片
     const items = list.map(a => `
       <div class="anomaly-item ${a.level}">
         <div class="anomaly-header" onclick="toggleAnomaly('anomaly-detail-${a.type}', this.querySelector('.anomaly-arrow'))">
@@ -302,20 +315,20 @@ async function loadAnomalies(month) {
           </div>
           ${a.type === '未匹配团队' ? `
             <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:1.8;">
-              💡 可能原因：运单号不在数据库订单中，或 SQL 日期范围未覆盖该运单<br>
+              可能原因：运单号不在数据库订单中，或 SQL 日期范围未覆盖该运单<br>
               可在 <a href="/config" style="color:var(--accent)">配置 → 运行参数</a> 中调整扩展天数
             </div>` : ''}
           ${a.type === '重量异常' ? `
             <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-              💡 判断条件：结算重量 ≤ 0 或 ≥ 50kg，建议人工核对原始账单
+              判断条件：结算重量 ≤ 0 或 ≥ 50kg，建议人工核对原始账单
             </div>` : ''}
           ${a.type === '省份为空' ? `
             <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-              💡 目的省份字段为空，计费模式可能判断不准确，建议检查原始账单格式
+              目的省份字段为空，计费模式可能判断不准确，建议检查原始账单格式
             </div>` : ''}
           ${a.type === '单票金额为零' ? `
             <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-              💡 计费方式为单票但应付金额为0，可能是报价表缺少该省份数据，建议检查
+              计费方式为单票但应付金额为0，可能是报价表缺少该省份数据，建议检查
               <a href="/config" style="color:var(--accent)">配置 → 申通/中通报价</a>
             </div>` : ''}
         </div>
@@ -336,14 +349,14 @@ function toggleAnomaly(detailId, arrowEl) {
   if (!detail) return;
   const isOpen = detail.classList.contains('open');
   detail.classList.toggle('open', !isOpen);
-  // 找到对应的箭头元素
   const arrow = arrowEl?.classList?.contains('anomaly-arrow')
     ? arrowEl
     : document.querySelector(`#${detailId}`).previousElementSibling.querySelector('.anomaly-arrow');
   if (arrow) arrow.classList.toggle('open', !isOpen);
 }
 
-async function loadUnmatched(month) {  document.getElementById('unmatched-title').textContent = `未匹配运单分析 — ${month}`;
+async function loadUnmatched(month) {
+  document.getElementById('unmatched-title').textContent = `未匹配运单分析 — ${month}`;
   document.getElementById('unmatched-area').innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px;">加载中...</div>';
   try {
     const res  = await fetch(`/unmatched/${month}`);
