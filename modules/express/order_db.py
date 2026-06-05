@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 数据库订单下载模块（V2.4 稳定版）
 ==================================================
@@ -23,7 +23,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
 from config import settings
-from utils import ensure_folder, get_last_month_str, FULL_BORDER, HEADER_FONT, CENTER_ALIGN
+from core.utils import ensure_folder, get_last_month_str, FULL_BORDER, HEADER_FONT, CENTER_ALIGN
 
 # ====================== 配置（从settings读取）======================
 DB_CONFIG         = settings.DB_CONFIG

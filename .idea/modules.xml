@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/express-bill-auto.iml" filepath="$PROJECT_DIR$/.idea/express-bill-auto.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/yibo-backoffice.iml" filepath="$PROJECT_DIR$/.idea/yibo-backoffice.iml" />
     </modules>
   </component>
 </project>

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 快递单合并模块（V3.0）
 ==================================================
@@ -35,7 +35,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
 
 from config import settings
-from utils import ensure_folder, read_excel, clean_dataframe, FULL_BORDER
+from core.utils import ensure_folder, read_excel, clean_dataframe, FULL_BORDER
 
 # ====================== 路径配置 ======================
 DATA_FOLDER         = settings.DATA_FOLDER

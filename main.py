@@ -155,10 +155,10 @@ def main():
     # -------------------- 主流程：四步串联 --------------------
     try:
         # 延迟导入模块，避免启动时因配置未初始化报错
-        import order_db
-        import merge_express
-        import order_matching
-        import split_bill_by_team
+        from modules.express import order_db
+        from modules.express import merge_express
+        from modules.express import order_matching
+        from modules.express import split_bill_by_team
 
         # ---------- 第一步：从数据库下载订单数据 ----------
         print_separator(f"第一步：从数据库下载 {process_month} 订单数据")

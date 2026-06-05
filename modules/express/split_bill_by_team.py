@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 客户对账账单拆分 V3.3
 ==================================================
@@ -24,7 +24,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 from config import settings
-from utils import (
+from core.utils import (
     ensure_folder, FULL_BORDER, HEADER_FONT, BOLD_FONT,
     CENTER_ALIGN, LEFT_ALIGN, RIGHT_ALIGN, WRAP_CENTER_ALIGN
 )

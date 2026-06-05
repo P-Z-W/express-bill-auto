@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 快递订单对账匹配模块（V3.3）
 ==================================================
@@ -31,7 +31,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
 from config import settings
-from utils import ensure_folder, read_excel, FULL_BORDER, HEADER_FONT, CENTER_ALIGN, BOLD_FONT
+from core.utils import ensure_folder, read_excel, FULL_BORDER, HEADER_FONT, CENTER_ALIGN, BOLD_FONT
 
 # ====================== 路径配置 ======================
 OUTPUT_FOLDER     = settings.OUTPUT_FOLDER
