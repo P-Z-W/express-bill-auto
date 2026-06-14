@@ -50,7 +50,7 @@ def get_calc_type(dest_prov, weight):
     """
     if weight >= 3:
         return "单票"
-    if dest_prov.startswith("新疆") or dest_prov.startswith("西藏"):
+    if (dest_prov.startswith("新疆") or dest_prov.startswith("西藏")) and 1 < weight < 3:
         return "新西1-3公斤"
     return "全国均重"
 
@@ -320,8 +320,9 @@ def match_team_by_waybill():
     _prov   = df_express["目的省份"].astype(str).str.strip()
     _weight = pd.to_numeric(df_express["结算重量"], errors="coerce")
     _xinxi  = _prov.str.startswith("新疆") | _prov.str.startswith("西藏")
+    _xinxi_13 = _xinxi & (_weight > 1) & (_weight < 3)
     df_express["实际计算方式"] = np.select(
-        [_weight >= 3, _xinxi],
+        [_weight >= 3, _xinxi_13],
         ["单票", "新西1-3公斤"],
         default="全国均重"
     )

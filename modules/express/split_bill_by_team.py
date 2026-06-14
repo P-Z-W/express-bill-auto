@@ -107,7 +107,6 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     st_avg_all, zt_avg_all, st_fee_all, zt_fee_all = get_team_rule(team_name)
 
     col_start = 12
-    col_end   = 19
 
     total_order  = len(team_df)
     xixi_order   = len(team_df[(team_df["结算重量"] < 1) & (team_df["目的省份"].str.contains("新疆|西藏", na=False))])
@@ -115,15 +114,6 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
     is_over_flag = "是" if xixi_order >= threshold else "否"
     settle_order = math.ceil(xixi_order - threshold) if is_over_flag == "是" else 0
     r11_value    = settle_order * 10
-
-    # 汇总大标题
-    ws.merge_cells(start_row=1, start_column=col_start, end_row=1, end_column=col_end)
-    title_cell           = ws.cell(row=1, column=col_start)
-    title_cell.value     = "加收费汇总"
-    title_cell.font      = HEADER_FONT
-    title_cell.fill      = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    title_cell.alignment = CENTER_ALIGN
-    title_cell.border    = FULL_BORDER
 
     if team_name == SPECIAL_TEAM:
         summary_headers = ["序号","实际计算方式","快递类型","发货单量","结算重量","平均重量","超出重量","应付金额"]
@@ -138,6 +128,17 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
             ("全国均重",""), ("单票",""), ("新西1-3公斤",""),
             ("新西1kg内（包1%）",""), ("合计","")
         ]
+
+    col_end = col_start + len(summary_headers) - 1
+
+    # 汇总大标题
+    ws.merge_cells(start_row=1, start_column=col_start, end_row=1, end_column=col_end)
+    title_cell           = ws.cell(row=1, column=col_start)
+    title_cell.value     = "加收费汇总"
+    title_cell.font      = HEADER_FONT
+    title_cell.fill      = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    title_cell.alignment = CENTER_ALIGN
+    title_cell.border    = FULL_BORDER
 
     for idx, text in enumerate(summary_headers):
         cell           = ws.cell(row=2, column=col_start + idx)
@@ -170,9 +171,8 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 row_fee        = round(single_fee * order_cnt, 2)
                 total_fee_all += row_fee
             elif calc_name in ("单票", "新西1-3公斤"):
-                _w = pd.to_numeric(filter_df["结算重量"], errors="coerce").dropna()
-                fee_sum        = ((_w - use_avg).clip(lower=0) / 0.1 * use_fee).round(2).sum()
-                row_fee        = round(fee_sum, 2)
+                _fee           = pd.to_numeric(filter_df["单票应付金额"], errors="coerce").fillna(0)
+                row_fee        = round(_fee.sum(), 2)
                 total_fee_all += row_fee
             elif calc_name == "新西1kg内（包1%）":
                 row_fee        = r11_value
@@ -207,9 +207,8 @@ def add_summary_area(ws, team_df: pd.DataFrame, team_name: str) -> float:
                 row_fee        = round(single_fee * order_cnt, 2)
                 total_fee_all += row_fee
             elif calc_name in ("单票", "新西1-3公斤"):
-                _w = pd.to_numeric(filter_df["结算重量"], errors="coerce").dropna()
-                fee_sum        = ((_w - st_avg_all).clip(lower=0) / 0.1 * st_fee_all).round(2).sum()
-                row_fee        = round(fee_sum, 2)
+                _fee           = pd.to_numeric(filter_df["单票应付金额"], errors="coerce").fillna(0)
+                row_fee        = round(_fee.sum(), 2)
                 total_fee_all += row_fee
             elif calc_name == "新西1kg内（包1%）":
                 row_fee        = r11_value
